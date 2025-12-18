@@ -80,10 +80,31 @@ func (s *Server) setupRoutes() {
 		s3Group.GET("/", s.s3Handler.ListBuckets)
 
 		// Bucket 操作
-		s3Group.PUT("/:bucket", s.s3Handler.CreateBucket)
 		s3Group.HEAD("/:bucket", s.s3Handler.HeadBucket)
-		s3Group.DELETE("/:bucket", s.s3Handler.DeleteBucket)
-		s3Group.GET("/:bucket", s.bucketOrObjectHandler)
+		s3Group.PUT("/:bucket", func(c *gin.Context) {
+			// 检查是否为 Policy 操作
+			if c.Query("policy") != "" {
+				s.s3Handler.PutBucketPolicy(c)
+				return
+			}
+			s.s3Handler.CreateBucket(c)
+		})
+		s3Group.DELETE("/:bucket", func(c *gin.Context) {
+			// 检查是否为 Policy 操作
+			if c.Query("policy") != "" {
+				s.s3Handler.DeleteBucketPolicy(c)
+				return
+			}
+			s.s3Handler.DeleteBucket(c)
+		})
+		s3Group.GET("/:bucket", func(c *gin.Context) {
+			// 检查是否为 Policy 操作
+			if c.Query("policy") != "" {
+				s.s3Handler.GetBucketPolicy(c)
+				return
+			}
+			s.s3Handler.ListObjects(c)
+		})
 
 		// Object 操作
 		s3Group.PUT("/:bucket/*key", s.objectPutHandler)
@@ -169,6 +190,30 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 		   strings.HasPrefix(c.Request.URL.Path, "/auth/") {
 			c.Next()
 			return
+		}
+
+		// 检查是否为公开读访问 (只对 GetObject 生效)
+		if c.Request.Method == "GET" && strings.Count(c.Request.URL.Path, "/") >= 2 {
+			// 路径格式: /{bucket}/{key...}
+			parts := strings.SplitN(strings.TrimPrefix(c.Request.URL.Path, "/"), "/", 2)
+			if len(parts) == 2 {
+				bucketName := parts[0]
+				bucket, err := s.repo.GetBucketByName(c.Request.Context(), bucketName)
+				if err == nil && bucket != nil {
+					// 尝试获取 bucket policy
+					policyData, err := s.repo.GetBucketPolicy(c.Request.Context(), bucket.ID)
+					if err == nil && policyData != nil {
+						policy, err := metadata.ParseBucketPolicy(policyData)
+						if err == nil && policy.IsPublicRead() {
+							// 公开读，允许匿名访问
+							c.Set("public_access", true)
+							c.Set("bucket_id", bucket.ID)
+							c.Next()
+							return
+						}
+					}
+				}
+			}
 		}
 
 		// 解析认证信息

@@ -46,10 +46,46 @@ async function generateAuthHeader(method: string, path: string, body?: any, addi
   }
 }
 
+// 解析 ListBuckets XML 响应
+function parseListBucketsXML(xmlString: string) {
+  const parser = new DOMParser()
+  const xmlDoc = parser.parseFromString(xmlString, 'text/xml')
+  
+  const buckets: Array<{ Name: string; CreationDate: string }> = []
+  const bucketElements = xmlDoc.getElementsByTagName('Bucket')
+  
+  for (let i = 0; i < bucketElements.length; i++) {
+    const bucket = bucketElements[i]
+    const name = bucket.getElementsByTagName('Name')[0]?.textContent || ''
+    const creationDate = bucket.getElementsByTagName('CreationDate')[0]?.textContent || ''
+    
+    if (name) {
+      buckets.push({ Name: name, CreationDate: creationDate })
+    }
+  }
+  
+  return {
+    ListAllMyBucketsResult: {
+      Buckets: {
+        Bucket: buckets
+      }
+    }
+  }
+}
+
 // Bucket 操作
 export async function listBuckets() {
   const headers = await generateAuthHeader('GET', '/')
-  const response = await api.get('/', { headers })
+  const response = await api.get('/', { 
+    headers,
+    responseType: 'text'
+  })
+  
+  // 如果响应是 XML 字符串，解析它
+  if (typeof response.data === 'string' && response.data.includes('<ListAllMyBucketsResult')) {
+    return parseListBucketsXML(response.data)
+  }
+  
   return response.data
 }
 
@@ -81,11 +117,16 @@ export async function uploadObject(bucket: string, key: string, file: File, onPr
     'Content-Type': file.type || 'application/octet-stream',
   }
   
-  const headers = await generateAuthHeader('PUT', `/${bucket}/${key}`, file, additionalHeaders)
+  // 对路径进行编码，确保签名时使用的 URL 和实际请求的 URL 一致
+  // axios 会自动编码 URL，所以我们需要在签名时也使用编码后的路径
+  const encodedKey = key.split('/').map(segment => encodeURIComponent(segment)).join('/')
+  const path = `/${bucket}/${encodedKey}`
   
-  await api.put(`/${bucket}/${key}`, file, {
+  const headers = await generateAuthHeader('PUT', path, file, additionalHeaders)
+  
+  await api.put(path, file, {
     headers,
-    onUploadProgress: (e) => {
+    onUploadProgress: (e: any) => {
       if (onProgress && e.total) {
         onProgress(Math.round((e.loaded * 100) / e.total))
       }
@@ -94,8 +135,12 @@ export async function uploadObject(bucket: string, key: string, file: File, onPr
 }
 
 export async function deleteObject(bucket: string, key: string) {
-  const headers = await generateAuthHeader('DELETE', `/${bucket}/${key}`)
-  await api.delete(`/${bucket}/${key}`, { headers })
+  // 对路径进行编码
+  const encodedKey = key.split('/').map(segment => encodeURIComponent(segment)).join('/')
+  const path = `/${bucket}/${encodedKey}`
+  
+  const headers = await generateAuthHeader('DELETE', path)
+  await api.delete(path, { headers })
 }
 
 export async function getObjectUrl(bucket: string, key: string) {

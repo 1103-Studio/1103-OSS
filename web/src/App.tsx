@@ -21,7 +21,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/buckets" element={<Buckets />} />
-        <Route path="/buckets/:bucket/*" element={<BucketDetail />} />
+        <Route path="/buckets/:bucket/*" element={<Objects />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/users" element={<Users />} />
         <Route path="/about" element={<About />} />

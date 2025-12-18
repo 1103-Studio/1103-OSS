@@ -122,6 +122,11 @@ type Repository interface {
 	ListAllBuckets(ctx context.Context) ([]Bucket, error)
 	UpdateBucket(ctx context.Context, bucket *Bucket) error
 	DeleteBucket(ctx context.Context, id int64) error
+	
+	// Bucket Policy 操作
+	SetBucketPolicy(ctx context.Context, bucketID int64, policy []byte) error
+	GetBucketPolicy(ctx context.Context, bucketID int64) ([]byte, error)
+	DeleteBucketPolicy(ctx context.Context, bucketID int64) error
 
 	// Object 操作
 	CreateObject(ctx context.Context, obj *Object) error

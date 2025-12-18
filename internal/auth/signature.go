@@ -237,11 +237,18 @@ func (s *SignatureV4) buildCanonicalRequest(r *http.Request, signedHeaders []str
 	// HTTP Method
 	method := r.Method
 
-	// Canonical URI
+	// Canonical URI - 需要对路径进行 URI 编码，但保留斜杠
 	uri := r.URL.Path
 	if uri == "" {
 		uri = "/"
 	}
+	// 对路径的每个部分进行编码（斜杠分隔），但保留斜杠本身
+	// 使用 PathEscape 而不是 QueryEscape，空格编码为 %20 而不是 +
+	parts := strings.Split(uri, "/")
+	for i, part := range parts {
+		parts[i] = url.PathEscape(part)
+	}
+	uri = strings.Join(parts, "/")
 
 	// Canonical Query String
 	queryString := s.buildCanonicalQueryString(r.URL.Query())
@@ -259,10 +266,18 @@ func (s *SignatureV4) buildCanonicalRequest(r *http.Request, signedHeaders []str
 func (s *SignatureV4) buildCanonicalRequestForQuery(r *http.Request, signedHeaders []string, contentSHA256 string) string {
 	method := r.Method
 
+	// Canonical URI - 需要对路径进行 URI 编码，但保留斜杠
 	uri := r.URL.Path
 	if uri == "" {
 		uri = "/"
 	}
+	// 对路径的每个部分进行编码（斜杠分隔），但保留斜杠本身
+	// 使用 PathEscape 而不是 QueryEscape，空格编码为 %20 而不是 +
+	parts := strings.Split(uri, "/")
+	for i, part := range parts {
+		parts[i] = url.PathEscape(part)
+	}
+	uri = strings.Join(parts, "/")
 
 	queryString := s.buildCanonicalQueryString(r.URL.Query())
 	canonicalHeaders := s.buildCanonicalHeaders(r, signedHeaders)

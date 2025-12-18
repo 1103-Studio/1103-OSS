@@ -36,7 +36,9 @@ export default function Users() {
       )
       
       const response = await axios.get('http://localhost:9000/admin/users', { headers })
-      return response.data as User[]
+      // 过滤掉无效用户
+      const allUsers = response.data as User[]
+      return allUsers.filter(user => user && user.username && user.id)
     },
     enabled: !!credentials
   })
@@ -137,7 +139,7 @@ export default function Users() {
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50 dark:bg-gray-700">
-            <tr>
+            <tr key="header">
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">用户名</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">邮箱</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">角色</th>
@@ -150,7 +152,7 @@ export default function Users() {
             {users?.map((user) => (
               <tr key={user.id}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                  {user.username}
+                  {user.username || '未命名用户'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                   {user.email || '-'}
@@ -178,7 +180,10 @@ export default function Users() {
                   )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                  {new Date(user.createdAt).toLocaleDateString('zh-CN')}
+                  {user.createdAt && !isNaN(new Date(user.createdAt).getTime()) 
+                    ? new Date(user.createdAt).toLocaleDateString('zh-CN') 
+                    : '-'
+                  }
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <button
@@ -335,8 +340,8 @@ function UserFormModal({ title, user, onClose, onSubmit }: {
                 onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                 className="input"
               >
-                <option value="active">正常</option>
-                <option value="disabled">禁用</option>
+                <option key="active" value="active">正常</option>
+                <option key="disabled" value="disabled">禁用</option>
               </select>
             </div>
           )}

@@ -9,7 +9,8 @@ import {
   Moon,
   Monitor,
   Globe,
-  Info
+  Info,
+  Users
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
@@ -62,7 +63,7 @@ export default function Layout({ children }: LayoutProps) {
                 }`}
               >
                 <item.icon className="w-5 h-5" />
-                <span className="font-medium">{item.label}</span>
+                <span className="font-medium">{item.name}</span>
               </Link>
             )
           })}

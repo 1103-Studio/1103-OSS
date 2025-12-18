@@ -182,11 +182,22 @@ export async function getSignedHeaders(
 ): Promise<Record<string, string>> {
   const headers = additionalHeaders || {}
   
+  // 对于 File/Blob 等二进制数据，直接传递原始对象
+  // signRequest 会将其处理为 UNSIGNED-PAYLOAD
+  let requestBody: string | ArrayBuffer | null = null
+  if (typeof body === 'string') {
+    requestBody = body
+  } else if (body instanceof File || body instanceof Blob || body instanceof ArrayBuffer) {
+    requestBody = body
+  } else if (body !== null && body !== undefined) {
+    requestBody = JSON.stringify(body)
+  }
+  
   const signedHeaders = await signRequest({
     method,
     url,
     headers,
-    body: typeof body === 'string' ? body : body ? JSON.stringify(body) : null,
+    body: requestBody,
     accessKey,
     secretKey,
     region: 'us-east-1',
