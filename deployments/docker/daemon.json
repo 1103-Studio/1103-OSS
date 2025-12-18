@@ -1,0 +1,8 @@
+{
+  "registry-mirrors": [
+    "https://docker.1ms.run"
+  ],
+  "insecure-registries": [],
+  "debug": false,
+  "experimental": false
+}

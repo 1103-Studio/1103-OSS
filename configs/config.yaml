@@ -1,0 +1,45 @@
+server:
+  host: "0.0.0.0"
+  port: 9000
+  admin_port: 9001
+
+storage:
+  type: "local"  # local | distributed
+  local:
+    base_path: "/data/oss"
+  distributed:
+    nodes: []
+
+database:
+  host: "localhost"
+  port: 5432
+  user: "oss"
+  password: "oss_password"
+  dbname: "oss"
+  sslmode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+
+auth:
+  root_user: "admin"
+  root_password: "admin123"
+  token_expire_hours: 24
+
+logging:
+  level: "info"  # debug | info | warn | error
+  format: "json" # json | console
+  output: "stdout" # stdout | file
+  file_path: "/var/log/oss/server.log"
+
+limits:
+  max_object_size: 5368709120  # 5GB
+  max_part_size: 104857600     # 100MB
+  min_part_size: 5242880       # 5MB
+  max_parts: 10000
+  rate_limit_per_second: 1000

@@ -1,0 +1,170 @@
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:15-alpine
+    container_name: gooss-postgres
+    environment:
+      POSTGRES_DB: oss
+      POSTGRES_USER: oss
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-oss_password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ../scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - gooss-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oss -d oss"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: gooss-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - gooss-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # GoOSS API 服务 (生产模式)
+  gooss-api:
+    build:
+      context: ..
+      dockerfile: deployments/docker/Dockerfile
+    container_name: gooss-api
+    environment:
+      - OSS_DATABASE_HOST=postgres
+      - OSS_DATABASE_PORT=5432
+      - OSS_DATABASE_USER=oss
+      - OSS_DATABASE_PASSWORD=${DB_PASSWORD:-oss_password}
+      - OSS_DATABASE_DBNAME=oss
+      - OSS_REDIS_HOST=redis
+      - OSS_REDIS_PORT=6379
+      - OSS_STORAGE_LOCAL_BASE_PATH=/data/oss
+      - OSS_AUTH_ROOT_USER=${ROOT_USER:-admin}
+      - OSS_AUTH_ROOT_PASSWORD=${ROOT_PASSWORD:-admin123}
+      - OSS_LOGGING_LEVEL=info
+    volumes:
+      - oss-data:/data/oss
+    ports:
+      - "9000:9000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - gooss-network
+    restart: unless-stopped
+    profiles:
+      - production
+
+  # GoOSS API 服务 (开发模式 - 支持热重载)
+  gooss-api-dev:
+    build:
+      context: ..
+      dockerfile: deployments/docker/Dockerfile.dev
+    container_name: gooss-api-dev
+    environment:
+      - OSS_DATABASE_HOST=postgres
+      - OSS_DATABASE_PORT=5432
+      - OSS_DATABASE_USER=oss
+      - OSS_DATABASE_PASSWORD=${DB_PASSWORD:-oss_password}
+      - OSS_DATABASE_DBNAME=oss
+      - OSS_REDIS_HOST=redis
+      - OSS_REDIS_PORT=6379
+      - OSS_STORAGE_LOCAL_BASE_PATH=/data/oss
+      - OSS_AUTH_ROOT_USER=${ROOT_USER:-admin}
+      - OSS_AUTH_ROOT_PASSWORD=${ROOT_PASSWORD:-admin123}
+      - OSS_LOGGING_LEVEL=debug
+    volumes:
+      - ..:/app
+      - go-cache:/go/pkg/mod
+      - oss-data:/data/oss
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - gooss-network
+    profiles:
+      - dev
+
+  # Web 管理界面 (生产模式)
+  gooss-web:
+    build:
+      context: ..
+      dockerfile: deployments/docker/Dockerfile.web
+    container_name: gooss-web
+    ports:
+      - "9002:80"
+    depends_on:
+      - gooss-api
+    networks:
+      - gooss-network
+    restart: unless-stopped
+    profiles:
+      - production
+
+  # Web 管理界面 (开发模式 - 支持热重载)
+  gooss-web-dev:
+    image: node:20-alpine
+    container_name: gooss-web-dev
+    working_dir: /app
+    command: sh -c "npm install && npm run dev"
+    volumes:
+      - ../web:/app
+      - node-modules:/app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:9000
+    networks:
+      - gooss-network
+    profiles:
+      - dev
+
+  # Nginx 网关 (可选)
+  nginx:
+    image: nginx:alpine
+    container_name: gooss-nginx
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - gooss-api
+      - gooss-web
+    networks:
+      - gooss-network
+    restart: unless-stopped
+    profiles:
+      - production
+      - gateway
+
+volumes:
+  postgres-data:
+  redis-data:
+  oss-data:
+  go-cache:
+  node-modules:
+
+networks:
+  gooss-network:
+    driver: bridge
