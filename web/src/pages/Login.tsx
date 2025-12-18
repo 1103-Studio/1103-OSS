@@ -17,8 +17,14 @@ export default function Login() {
       return
     }
 
-    login({ accessKey, secretKey, endpoint })
-    toast.success('Logged in successfully')
+    try {
+      login({ accessKey, secretKey, endpoint })
+      toast.success('Logged in successfully')
+      // 强制刷新页面以触发重新渲染
+      window.location.reload()
+    } catch (error) {
+      toast.error('Login failed')
+    }
   }
 
   return (
