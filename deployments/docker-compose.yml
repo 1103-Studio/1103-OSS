@@ -2,7 +2,7 @@ services:
   # PostgreSQL 数据库
   postgres:
     image: postgres:15-alpine
-    container_name: gooss-postgres
+    container_name: 1103-oss-postgres
     environment:
       POSTGRES_DB: oss
       POSTGRES_USER: oss
@@ -13,7 +13,7 @@ services:
     ports:
       - "5432:5432"
     networks:
-      - gooss-network
+      - 1103-oss-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U oss -d oss"]
       interval: 10s
@@ -23,21 +23,21 @@ services:
   # Redis 缓存
   redis:
     image: redis:7-alpine
-    container_name: gooss-redis
+    container_name: 1103-oss-redis
     command: redis-server --appendonly yes
     volumes:
       - redis-data:/data
     ports:
       - "6379:6379"
     networks:
-      - gooss-network
+      - 1103-oss-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # GoOSS API 服务 (生产模式)
+  # 1103-OSS API 服务 (生产模式)
   gooss-api:
     build:
       context: ..
@@ -65,17 +65,17 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - gooss-network
+      - 1103-oss-network
     restart: unless-stopped
     profiles:
       - production
 
-  # GoOSS API 服务 (开发模式 - 支持热重载)
+  # 1103-OSS API 服务 (开发模式 - 支持热重载)
   gooss-api-dev:
     build:
       context: ..
       dockerfile: deployments/docker/Dockerfile.dev
-    container_name: gooss-api-dev
+    container_name: 1103-oss-api-dev
     environment:
       - OSS_DATABASE_HOST=postgres
       - OSS_DATABASE_PORT=5432
@@ -101,7 +101,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - gooss-network
+      - 1103-oss-network
     profiles:
       - dev
 
@@ -116,7 +116,7 @@ services:
     depends_on:
       - gooss-api
     networks:
-      - gooss-network
+      - 1103-oss-network
     restart: unless-stopped
     profiles:
       - production
@@ -124,7 +124,7 @@ services:
   # Web 管理界面 (开发模式 - 支持热重载)
   gooss-web-dev:
     image: node:20-alpine
-    container_name: gooss-web-dev
+    container_name: 1103-oss-web-dev
     working_dir: /app
     command: sh -c "npm install && npm run dev"
     volumes:
@@ -135,14 +135,14 @@ services:
     environment:
       - VITE_API_URL=http://localhost:9000
     networks:
-      - gooss-network
+      - 1103-oss-network
     profiles:
       - dev
 
   # Nginx 网关 (可选)
   nginx:
     image: nginx:alpine
-    container_name: gooss-nginx
+    container_name: 1103-oss-nginx
     volumes:
       - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
     ports:
@@ -152,7 +152,7 @@ services:
       - gooss-api
       - gooss-web
     networks:
-      - gooss-network
+      - 1103-oss-network
     restart: unless-stopped
     profiles:
       - production
@@ -166,5 +166,5 @@ volumes:
   node-modules:
 
 networks:
-  gooss-network:
+  1103-oss-network:
     driver: bridge

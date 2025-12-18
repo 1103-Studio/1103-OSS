@@ -64,14 +64,21 @@ func (r *PostgresRepository) GetUserByID(ctx context.Context, id int64) (*User, 
 	query := `SELECT id, username, password_hash, email, status, is_admin, created_at, updated_at
 		FROM users WHERE id = $1`
 	user := &User{}
+	var email sql.NullString
 	err := r.conn(ctx).QueryRow(ctx, query, id).Scan(
-		&user.ID, &user.Username, &user.PasswordHash, &user.Email,
+		&user.ID, &user.Username, &user.PasswordHash, &email,
 		&user.Status, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
-	return user, err
+	if err != nil {
+		return nil, err
+	}
+	if email.Valid {
+		user.Email = email.String
+	}
+	return user, nil
 }
 
 func (r *PostgresRepository) GetUserByUsername(ctx context.Context, username string) (*User, error) {
@@ -107,18 +114,12 @@ func (r *PostgresRepository) DeleteUser(ctx context.Context, id int64) error {
 	return err
 }
 
-func (r *PostgresRepository) ListUsers(ctx context.Context, offset, limit int) ([]User, int64, error) {
-	var total int64
-	err := r.conn(ctx).QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&total)
-	if err != nil {
-		return nil, 0, err
-	}
-
+func (r *PostgresRepository) ListUsers(ctx context.Context) ([]User, error) {
 	query := `SELECT id, username, password_hash, email, status, is_admin, created_at, updated_at
-		FROM users ORDER BY id LIMIT $1 OFFSET $2`
-	rows, err := r.conn(ctx).Query(ctx, query, limit, offset)
+		FROM users ORDER BY id`
+	rows, err := r.conn(ctx).Query(ctx, query)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -128,14 +129,14 @@ func (r *PostgresRepository) ListUsers(ctx context.Context, offset, limit int) (
 		var email sql.NullString
 		if err := rows.Scan(&user.ID, &user.Username, &user.PasswordHash, &email,
 			&user.Status, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt); err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 		if email.Valid {
 			user.Email = email.String
 		}
 		users = append(users, user)
 	}
-	return users, total, nil
+	return users, nil
 }
 
 // ==================== Credential 操作 ====================
@@ -170,7 +171,7 @@ func (r *PostgresRepository) GetCredentialByAccessKey(ctx context.Context, acces
 	return cred, err
 }
 
-func (r *PostgresRepository) ListCredentialsByUserID(ctx context.Context, userID int64) ([]Credential, error) {
+func (r *PostgresRepository) GetCredentialsByUserID(ctx context.Context, userID int64) ([]Credential, error) {
 	query := `SELECT id, user_id, access_key, secret_key, description, status, created_at, expires_at
 		FROM credentials WHERE user_id = $1`
 	rows, err := r.conn(ctx).Query(ctx, query, userID)

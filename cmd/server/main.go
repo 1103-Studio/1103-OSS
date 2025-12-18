@@ -35,7 +35,7 @@ func main() {
 	}
 	defer logger.Sync()
 
-	logger.Infof("Starting GoOSS Server...")
+	logger.Info("Starting 1103-OSS Server...")
 
 	// 初始化数据库
 	repo, err := metadata.NewPostgresRepository(cfg.Database.DSN())

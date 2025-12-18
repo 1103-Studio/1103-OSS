@@ -2,7 +2,7 @@
 
 # 默认目标
 help:
-	@echo "GoOSS 容器化开发命令"
+	@echo "1103-OSS 容器化开发命令"
 	@echo ""
 	@echo "开发模式:"
 	@echo "  make dev          - 启动开发环境 (支持热重载)"
@@ -80,20 +80,20 @@ restart:
 # Shell 访问
 shell-api:
 	@echo "🐚 进入 API 容器..."
-	docker exec -it gooss-api-dev sh
+	docker exec -it 1103-oss-api-dev sh
 
 shell-db:
 	@echo "🐚 进入数据库容器..."
-	docker exec -it gooss-postgres psql -U oss -d oss
+	docker exec -it 1103-oss-postgres psql -U oss -d oss
 
 shell-web:
 	@echo "🐚 进入 Web 容器..."
-	docker exec -it gooss-web-dev sh
+	docker exec -it 1103-oss-web-dev sh
 
 # 数据库操作
 db-migrate:
 	@echo "📊 运行数据库迁移..."
-	docker exec -i gooss-postgres psql -U oss -d oss < scripts/init.sql
+	docker exec -i 1103-oss-postgres psql -U oss -d oss < scripts/init.sql
 	@echo "✅ 数据库迁移完成"
 
 db-reset:
@@ -112,4 +112,4 @@ status:
 # 查看凭证
 credentials:
 	@echo "🔑 查看管理员凭证:"
-	docker logs gooss-api-dev 2>&1 | grep -A 2 "Access Key"
+	docker logs 1103-oss-api-dev 2>&1 | grep -A 2 "Access Key"

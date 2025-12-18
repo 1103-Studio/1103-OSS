@@ -77,7 +77,7 @@ func ParseAuthorizationHeader(authHeader string) (*ParsedAuth, error) {
 	auth.SignedHeaders = strings.Split(headersMatch[1], ";")
 
 	// 解析 Signature
-	sigRegex := regexp.MustCompile(`Signature=([a-f0-9]+)`)
+	sigRegex := regexp.MustCompile(`Signature=([a-fA-F0-9]+)`)
 	sigMatch := sigRegex.FindStringSubmatch(authHeader)
 	if len(sigMatch) != 2 {
 		return nil, fmt.Errorf("invalid signature")
@@ -169,7 +169,16 @@ func (s *SignatureV4) verifyHeaderSignature(r *http.Request, auth *ParsedAuth, s
 	signature := s.calculateSignature(secretKey, auth.Date, auth.Region, stringToSign)
 
 	if signature != auth.Signature {
-		return fmt.Errorf("signature mismatch")
+		// 添加详细的调试信息
+		fmt.Printf("DEBUG: Signature mismatch\n")
+		fmt.Printf("  Expected: %s\n", auth.Signature)
+		fmt.Printf("  Calculated: %s\n", signature)
+		fmt.Printf("  Method: %s\n", r.Method)
+		fmt.Printf("  Path: %s\n", r.URL.Path)
+		fmt.Printf("  Host: %s\n", r.Host)
+		fmt.Printf("  SignedHeaders: %v\n", auth.SignedHeaders)
+		fmt.Printf("  CanonicalRequest:\n%s\n", canonicalRequest)
+		return fmt.Errorf("signature mismatch: expected=%s calculated=%s", auth.Signature, signature)
 	}
 
 	return nil

@@ -106,12 +106,12 @@ type Repository interface {
 	GetUserByUsername(ctx context.Context, username string) (*User, error)
 	UpdateUser(ctx context.Context, user *User) error
 	DeleteUser(ctx context.Context, id int64) error
-	ListUsers(ctx context.Context, offset, limit int) ([]User, int64, error)
+	ListUsers(ctx context.Context) ([]User, error)
 
 	// Credential 操作
 	CreateCredential(ctx context.Context, cred *Credential) error
 	GetCredentialByAccessKey(ctx context.Context, accessKey string) (*Credential, error)
-	ListCredentialsByUserID(ctx context.Context, userID int64) ([]Credential, error)
+	GetCredentialsByUserID(ctx context.Context, userID int64) ([]Credential, error)
 	DeleteCredential(ctx context.Context, id int64) error
 
 	// Bucket 操作

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 
 interface Credentials {
   accessKey: string
@@ -6,8 +6,18 @@ interface Credentials {
   endpoint: string
 }
 
-export function useAuth() {
+interface AuthContextType {
+  credentials: Credentials | null
+  isAuthenticated: boolean
+  login: (creds: Credentials) => void
+  logout: () => void
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
+
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [credentials, setCredentials] = useState<Credentials | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     const stored = localStorage.getItem('oss_credentials')
@@ -18,6 +28,7 @@ export function useAuth() {
         localStorage.removeItem('oss_credentials')
       }
     }
+    setIsLoading(false)
   }, [])
 
   const login = (creds: Credentials) => {
@@ -30,10 +41,23 @@ export function useAuth() {
     setCredentials(null)
   }
 
-  return {
-    credentials,
-    isAuthenticated: !!credentials,
-    login,
-    logout,
+  if (isLoading) {
+    return <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="text-gray-600 dark:text-gray-300">Loading...</div>
+    </div>
   }
+
+  return (
+    <AuthContext.Provider value={{ credentials, isAuthenticated: !!credentials, login, logout }}>
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext)
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider')
+  }
+  return context
 }

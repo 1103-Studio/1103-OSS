@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gooss/server/internal/api/s3"
@@ -48,6 +47,22 @@ func (s *Server) setupRoutes() {
 	s.engine.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	// 认证相关路由（不需要签名）
+	auth := s.engine.Group("/auth")
+	{
+		auth.POST("/login", s.Login)
+	}
+
+	// 用户管理路由（需要管理员权限）
+	admin := s.engine.Group("/admin")
+	admin.Use(s.authMiddleware())
+	{
+		admin.GET("/users", s.ListUsers)
+		admin.POST("/users", s.CreateUser)
+		admin.PUT("/users/:id", s.UpdateUser)
+		admin.DELETE("/users/:id", s.DeleteUser)
+	}
 
 	// S3 API 路由组
 	s3Group := s.engine.Group("")
@@ -184,14 +199,12 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 		}
 
 		// 验证签名
+		c.Header("Server", "1103-OSS/1.0")
 		signer := auth.NewSignatureV4(cred.AccessKey, cred.SecretKey, "us-east-1")
 		if err := signer.VerifyRequest(c.Request, cred.SecretKey); err != nil {
-			// 开发模式下可以跳过签名验证
-			if !strings.Contains(err.Error(), "signature mismatch") || s.config.Logging.Level != "debug" {
-				c.XML(http.StatusForbidden, response.NewError(response.ErrSignatureDoesNotMatch, err.Error(), c.Request.URL.Path))
-				c.Abort()
-				return
-			}
+			c.XML(http.StatusForbidden, response.NewError(response.ErrSignatureDoesNotMatch, err.Error(), c.Request.URL.Path))
+			c.Abort()
+			return
 		}
 
 		// 获取用户信息

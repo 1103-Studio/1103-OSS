@@ -2,28 +2,42 @@ import { useState } from 'react'
 import { Database } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import toast from 'react-hot-toast'
+import axios from 'axios'
 
 export default function Login() {
   const { login } = useAuth()
-  const [accessKey, setAccessKey] = useState('')
-  const [secretKey, setSecretKey] = useState('')
-  const [endpoint, setEndpoint] = useState('http://localhost:9000')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!accessKey || !secretKey) {
-      toast.error('Please enter access key and secret key')
+    if (!username || !password) {
+      toast.error('请输入用户名和密码')
       return
     }
 
+    setIsLoading(true)
     try {
-      login({ accessKey, secretKey, endpoint })
-      toast.success('Logged in successfully')
-      // 强制刷新页面以触发重新渲染
-      window.location.reload()
-    } catch (error) {
-      toast.error('Login failed')
+      const response = await axios.post('http://localhost:9000/auth/login', {
+        username,
+        password
+      })
+
+      const { accessKey, secretKey, endpoint } = response.data
+      login({ accessKey, secretKey, endpoint: endpoint || 'http://localhost:9000' })
+      toast.success('登录成功')
+    } catch (error: any) {
+      if (error.response?.status === 401) {
+        toast.error('用户名或密码错误')
+      } else if (error.response?.status === 403) {
+        toast.error('账户已被禁用')
+      } else {
+        toast.error('登录失败，请稍后重试')
+      }
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -33,7 +47,7 @@ export default function Login() {
         {/* Logo */}
         <div className="flex items-center justify-center mb-8">
           <Database className="w-12 h-12 text-primary-600" />
-          <span className="ml-3 text-3xl font-bold text-gray-900">GoOSS</span>
+          <span className="ml-3 text-3xl font-bold text-gray-900">1103-OSS</span>
         </div>
 
         <h2 className="text-2xl font-semibold text-center text-gray-900 mb-2">
@@ -46,45 +60,40 @@ export default function Login() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Endpoint
+              用户名
             </label>
             <input
               type="text"
-              value={endpoint}
-              onChange={(e) => setEndpoint(e.target.value)}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               className="input"
-              placeholder="http://localhost:9000"
+              placeholder="请输入用户名"
+              disabled={isLoading}
+              autoComplete="username"
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Access Key
-            </label>
-            <input
-              type="text"
-              value={accessKey}
-              onChange={(e) => setAccessKey(e.target.value)}
-              className="input"
-              placeholder="Enter your access key"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Secret Key
+              密码
             </label>
             <input
               type="password"
-              value={secretKey}
-              onChange={(e) => setSecretKey(e.target.value)}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               className="input"
-              placeholder="Enter your secret key"
+              placeholder="请输入密码"
+              disabled={isLoading}
+              autoComplete="current-password"
             />
           </div>
 
-          <button type="submit" className="btn btn-primary w-full py-3">
-            Sign In
+          <button 
+            type="submit" 
+            className="btn btn-primary w-full py-3"
+            disabled={isLoading}
+          >
+            {isLoading ? '登录中...' : '登录'}
           </button>
         </form>
 

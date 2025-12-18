@@ -2,7 +2,7 @@
 
 ## 架构说明
 
-GoOSS 完全容器化，所有服务都运行在 Docker 容器中：
+1103-OSS 完全容器化，所有服务都运行在 Docker 容器中：
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -10,13 +10,13 @@ GoOSS 完全容器化，所有服务都运行在 Docker 容器中：
 ├─────────────────────────────────────────────────────────┤
 │                                                          │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │  PostgreSQL  │  │    Redis     │  │   GoOSS API  │  │
+│  │  PostgreSQL  │  │    Redis     │  │ 1103-OSS API │  │
 │  │   :5432      │  │   :6379      │  │   :9000      │  │
 │  └──────────────┘  └──────────────┘  └──────────────┘  │
 │                                              │           │
 │                                              ▼           │
 │                                      ┌──────────────┐   │
-│                                      │  GoOSS Web   │   │
+│                                      │ 1103-OSS Web │   │
 │                                      │   :3000      │   │
 │                                      └──────────────┘   │
 └─────────────────────────────────────────────────────────┘
@@ -61,7 +61,7 @@ make prod
 
 ## 容器说明
 
-### gooss-api-dev (开发模式)
+### 1103-oss-api-dev (开发模式)
 
 ```dockerfile
 FROM golang:1.21-alpine
@@ -75,7 +75,7 @@ FROM golang:1.21-alpine
 - `go-cache:/go/pkg/mod` - Go 模块缓存
 - `oss-data:/data/oss` - 对象存储数据
 
-### gooss-web-dev (开发模式)
+### 1103-oss-web-dev (开发模式)
 
 ```dockerfile
 FROM node:20-alpine
@@ -225,15 +225,15 @@ aws --endpoint-url http://localhost:9000 s3 ls
 docker stats
 
 # 查看特定容器
-docker stats gooss-api-dev
+docker stats 1103-oss-api-dev
 
 # 查看容器详情
-docker inspect gooss-api-dev
+docker inspect 1103-oss-api-dev
 ```
 
 ## 网络配置
 
-所有容器都在 `gooss-network` 网络中，可以通过服务名互相访问：
+所有容器都在 `1103-oss-network` 网络中，可以通过服务名互相访问：
 
 ```yaml
 # API 访问数据库
@@ -260,7 +260,7 @@ docker volume inspect deployments_oss-data
 
 ```bash
 # 备份数据库
-docker exec gooss-postgres pg_dump -U oss oss > backup.sql
+docker exec 1103-oss-postgres pg_dump -U oss oss > backup.sql
 
 # 备份对象存储
 docker run --rm -v deployments_oss-data:/data -v $(pwd):/backup alpine tar czf /backup/oss-data.tar.gz -C /data .
@@ -270,7 +270,7 @@ docker run --rm -v deployments_oss-data:/data -v $(pwd):/backup alpine tar czf /
 
 ```bash
 # 恢复数据库
-docker exec -i gooss-postgres psql -U oss oss < backup.sql
+docker exec -i 1103-oss-postgres psql -U oss oss < backup.sql
 
 # 恢复对象存储
 docker run --rm -v deployments_oss-data:/data -v $(pwd):/backup alpine tar xzf /backup/oss-data.tar.gz -C /data
@@ -285,10 +285,10 @@ docker run --rm -v deployments_oss-data:/data -v $(pwd):/backup alpine tar xzf /
 docker ps -a
 
 # 查看容器日志
-docker logs gooss-api-dev
+docker logs 1103-oss-api-dev
 
 # 检查健康状态
-docker inspect --format='{{.State.Health.Status}}' gooss-postgres
+docker inspect --format='{{.State.Health.Status}}' 1103-oss-postgres
 ```
 
 ### 端口冲突
@@ -308,10 +308,10 @@ ports:
 
 ```bash
 # 检查数据库是否就绪
-docker exec gooss-postgres pg_isready -U oss
+docker exec 1103-oss-postgres pg_isready -U oss
 
 # 查看数据库日志
-docker logs gooss-postgres
+docker logs 1103-oss-postgres
 
 # 重启数据库
 cd deployments
@@ -325,7 +325,7 @@ docker-compose restart postgres
 cat .air.toml
 
 # 查看 Air 日志
-docker logs gooss-api-dev | grep air
+docker logs 1103-oss-api-dev | grep air
 
 # 手动重启
 make restart

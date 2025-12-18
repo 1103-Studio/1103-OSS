@@ -32,7 +32,7 @@ auth:
   token_expire_hours: 24
 
 logging:
-  level: "info"  # debug | info | warn | error
+  level: "debug"  # debug | info | warn | error
   format: "json" # json | console
   output: "stdout" # stdout | file
   file_path: "/var/log/oss/server.log"
