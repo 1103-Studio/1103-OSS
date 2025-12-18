@@ -4,7 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gooss/server/pkg/response"
+	"github.com/gooss/server/internal/auth"
+	"github.com/gooss/server/internal/metadata"
 	"golang.org/x/crypto/bcrypt"
 )
 

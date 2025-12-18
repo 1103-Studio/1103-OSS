@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gooss/server/internal/api/s3"
@@ -156,8 +157,9 @@ func (s *Server) corsMiddleware() gin.HandlerFunc {
 // authMiddleware 认证中间件
 func (s *Server) authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 健康检查跳过认证
-		if c.Request.URL.Path == "/health" {
+		// 跳过不需要认证的路径
+		if c.Request.URL.Path == "/health" || 
+		   strings.HasPrefix(c.Request.URL.Path, "/auth/") {
 			c.Next()
 			return
 		}

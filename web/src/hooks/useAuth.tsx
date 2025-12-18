@@ -17,7 +17,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [credentials, setCredentials] = useState<Credentials | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     const stored = localStorage.getItem('oss_credentials')
@@ -28,7 +27,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('oss_credentials')
       }
     }
-    setIsLoading(false)
   }, [])
 
   const login = (creds: Credentials) => {
@@ -39,12 +37,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     localStorage.removeItem('oss_credentials')
     setCredentials(null)
-  }
-
-  if (isLoading) {
-    return <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-      <div className="text-gray-600 dark:text-gray-300">Loading...</div>
-    </div>
   }
 
   return (
