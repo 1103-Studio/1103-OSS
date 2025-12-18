@@ -68,7 +68,9 @@ const translations = {
     // Navigation
     dashboard: 'Dashboard',
     buckets: 'Buckets',
+    users: 'User Management',
     settings: 'Settings',
+    about: 'About',
     logout: 'Logout',
     
     // Login

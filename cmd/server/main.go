@@ -122,13 +122,13 @@ func initAdminUser(repo metadata.Repository, cfg *config.Config) error {
 		logger.Infof("Created admin user: %s", user.Username)
 	}
 
-	// 检查是否有凭证
-	creds, err := repo.ListCredentialsByUserID(ctx, user.ID)
+	// 为管理员生成初始凭证
+	credentials, err := repo.GetCredentialsByUserID(ctx, user.ID)
 	if err != nil {
 		return err
 	}
 
-	if len(creds) == 0 {
+	if len(credentials) == 0 {
 		// 生成凭证
 		accessKey, secretKey, err := auth.GenerateCredentials()
 		if err != nil {

@@ -55,6 +55,13 @@ func (s *Server) setupRoutes() {
 		auth.POST("/login", s.Login)
 	}
 
+	// 用户个人操作路由（需要认证）
+	user := s.engine.Group("/user")
+	user.Use(s.authMiddleware())
+	{
+		user.POST("/change-password", s.ChangePassword)
+	}
+
 	// 用户管理路由（需要管理员权限）
 	admin := s.engine.Group("/admin")
 	admin.Use(s.authMiddleware())

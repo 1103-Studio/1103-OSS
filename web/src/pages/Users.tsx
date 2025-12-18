@@ -25,11 +25,17 @@ export default function Users() {
   const { data: users, isLoading } = useQuery({
     queryKey: ['users'],
     queryFn: async () => {
-      const response = await axios.get('http://localhost:9000/admin/users', {
-        headers: {
-          'Authorization': `Bearer ${credentials?.accessKey}`,
-        }
-      })
+      const { getSignedHeaders } = await import('../lib/aws-signature-v4')
+      const creds = JSON.parse(localStorage.getItem('oss_credentials') || '{}')
+      
+      const headers = await getSignedHeaders(
+        'GET',
+        'http://localhost:9000/admin/users',
+        creds.accessKey,
+        creds.secretKey
+      )
+      
+      const response = await axios.get('http://localhost:9000/admin/users', { headers })
       return response.data as User[]
     },
     enabled: !!credentials
@@ -38,11 +44,18 @@ export default function Users() {
   // 创建用户
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
-      await axios.post('http://localhost:9000/admin/users', data, {
-        headers: {
-          'Authorization': `Bearer ${credentials?.accessKey}`,
-        }
-      })
+      const { getSignedHeaders } = await import('../lib/aws-signature-v4')
+      const creds = JSON.parse(localStorage.getItem('oss_credentials') || '{}')
+      
+      const headers = await getSignedHeaders(
+        'POST',
+        'http://localhost:9000/admin/users',
+        creds.accessKey,
+        creds.secretKey,
+        data
+      )
+      
+      await axios.post('http://localhost:9000/admin/users', data, { headers })
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
@@ -57,11 +70,18 @@ export default function Users() {
   // 更新用户
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number, data: any }) => {
-      await axios.put(`http://localhost:9000/admin/users/${id}`, data, {
-        headers: {
-          'Authorization': `Bearer ${credentials?.accessKey}`,
-        }
-      })
+      const { getSignedHeaders } = await import('../lib/aws-signature-v4')
+      const creds = JSON.parse(localStorage.getItem('oss_credentials') || '{}')
+      
+      const headers = await getSignedHeaders(
+        'PUT',
+        `http://localhost:9000/admin/users/${id}`,
+        creds.accessKey,
+        creds.secretKey,
+        data
+      )
+      
+      await axios.put(`http://localhost:9000/admin/users/${id}`, data, { headers })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
@@ -76,11 +96,17 @@ export default function Users() {
   // 删除用户
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      await axios.delete(`http://localhost:9000/admin/users/${id}`, {
-        headers: {
-          'Authorization': `Bearer ${credentials?.accessKey}`,
-        }
-      })
+      const { getSignedHeaders } = await import('../lib/aws-signature-v4')
+      const creds = JSON.parse(localStorage.getItem('oss_credentials') || '{}')
+      
+      const headers = await getSignedHeaders(
+        'DELETE',
+        `http://localhost:9000/admin/users/${id}`,
+        creds.accessKey,
+        creds.secretKey
+      )
+      
+      await axios.delete(`http://localhost:9000/admin/users/${id}`, { headers })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })

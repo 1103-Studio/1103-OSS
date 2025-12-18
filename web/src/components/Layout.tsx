@@ -8,7 +8,8 @@ import {
   Sun,
   Moon,
   Monitor,
-  Globe
+  Globe,
+  Info
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
@@ -28,10 +29,11 @@ export default function Layout({ children }: LayoutProps) {
   const [showLangMenu, setShowLangMenu] = useState(false)
 
   const navItems = [
-    { path: '/', icon: LayoutDashboard, label: t('dashboard') },
-    { path: '/buckets', icon: FolderOpen, label: t('buckets') },
-    { path: '/users', icon: Settings, label: '用户管理' },
-    { path: '/settings', icon: Settings, label: t('settings') },
+    { name: t('dashboard'), path: '/', icon: Monitor },
+    { name: t('buckets'), path: '/buckets', icon: FolderOpen },
+    { name: t('users'), path: '/users', icon: Users },
+    { name: t('settings'), path: '/settings', icon: Settings },
+    { name: t('about'), path: '/about', icon: Info },
   ]
 
   return (

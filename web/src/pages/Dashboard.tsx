@@ -39,7 +39,7 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-8">Dashboard</h1>
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-8">Dashboard</h1>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -50,8 +50,8 @@ export default function Dashboard() {
                 <stat.icon className="w-6 h-6 text-white" />
               </div>
               <div className="ml-4">
-                <p className="text-sm text-gray-500">{stat.label}</p>
-                <p className="text-2xl font-semibold text-gray-900">{stat.value}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{stat.label}</p>
+                <p className="text-2xl font-semibold text-gray-900 dark:text-white">{stat.value}</p>
               </div>
             </div>
           </div>
@@ -60,25 +60,25 @@ export default function Dashboard() {
 
       {/* Quick Actions */}
       <div className="card p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Start</h2>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quick Start</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <a
             href="/buckets"
-            className="p-4 border border-gray-200 rounded-lg hover:border-primary-500 hover:bg-primary-50 transition-colors"
+            className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
           >
-            <FolderOpen className="w-8 h-8 text-primary-600 mb-2" />
-            <h3 className="font-medium text-gray-900">Create Bucket</h3>
-            <p className="text-sm text-gray-500">Start by creating a new bucket</p>
+            <FolderOpen className="w-8 h-8 text-primary-600 dark:text-primary-400 mb-2" />
+            <h3 className="font-medium text-gray-900 dark:text-white">Create Bucket</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Start by creating a new bucket</p>
           </a>
-          <div className="p-4 border border-gray-200 rounded-lg">
-            <File className="w-8 h-8 text-green-600 mb-2" />
-            <h3 className="font-medium text-gray-900">Upload Files</h3>
-            <p className="text-sm text-gray-500">Upload files to your buckets</p>
+          <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+            <File className="w-8 h-8 text-green-600 dark:text-green-400 mb-2" />
+            <h3 className="font-medium text-gray-900 dark:text-white">Upload Files</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Upload files to your buckets</p>
           </div>
-          <div className="p-4 border border-gray-200 rounded-lg">
-            <Activity className="w-8 h-8 text-orange-600 mb-2" />
-            <h3 className="font-medium text-gray-900">View Metrics</h3>
-            <p className="text-sm text-gray-500">Monitor your storage usage</p>
+          <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+            <Activity className="w-8 h-8 text-orange-600 dark:text-orange-400 mb-2" />
+            <h3 className="font-medium text-gray-900 dark:text-white">View Metrics</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Monitor your storage usage</p>
           </div>
         </div>
       </div>
