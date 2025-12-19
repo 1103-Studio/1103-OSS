@@ -13,7 +13,7 @@ interface SignatureParams {
 }
 
 // SHA256 哈希
-async function sha256(message: string): Promise<string> {
+export async function sha256(message: string): Promise<string> {
   const msgBuffer = new TextEncoder().encode(message)
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer)
   const hashArray = Array.from(new Uint8Array(hashBuffer))
@@ -21,12 +21,32 @@ async function sha256(message: string): Promise<string> {
 }
 
 // HMAC-SHA256
-async function hmacSha256(key: Uint8Array | string, message: string): Promise<Uint8Array> {
+export async function hmacSha256(key: Uint8Array | string, message: string): Promise<string> {
   const encoder = new TextEncoder()
   const keyData = typeof key === 'string' ? encoder.encode(key) : key
   const messageData = encoder.encode(message)
   
   // @ts-ignore - Uint8Array is compatible with BufferSource at runtime
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  )
+  
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData)
+  const signatureArray = Array.from(new Uint8Array(signature))
+  return signatureArray.map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+// 生成签名密钥（内部使用，返回 Uint8Array）
+async function hmacSha256Bytes(key: Uint8Array | string, message: string): Promise<Uint8Array> {
+  const encoder = new TextEncoder()
+  const keyData = typeof key === 'string' ? encoder.encode(key) : key
+  const messageData = encoder.encode(message)
+  
+  // @ts-ignore
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
     keyData,
@@ -46,20 +66,19 @@ async function getSignatureKey(
   region: string,
   service: string
 ): Promise<Uint8Array> {
-  const kDate = await hmacSha256('AWS4' + secretKey, dateStamp)
-  const kRegion = await hmacSha256(kDate, region)
-  const kService = await hmacSha256(kRegion, service)
-  const kSigning = await hmacSha256(kService, 'aws4_request')
+  const kDate = await hmacSha256Bytes('AWS4' + secretKey, dateStamp)
+  const kRegion = await hmacSha256Bytes(kDate, region)
+  const kService = await hmacSha256Bytes(kRegion, service)
+  const kSigning = await hmacSha256Bytes(kService, 'aws4_request')
   return kSigning
 }
 
 // 规范化 URI
 function canonicalUri(pathname: string): string {
   if (!pathname || pathname === '') return '/'
-  // 对路径进行 URI 编码，但保留斜杠
-  return pathname.split('/').map(segment => 
-    encodeURIComponent(decodeURIComponent(segment))
-  ).join('/')
+  // 直接使用传入的路径，因为调用方已经正确编码过了
+  // 不要做双重编码/解码，否则会导致签名不匹配
+  return pathname
 }
 
 // 规范化查询字符串
@@ -79,10 +98,18 @@ function canonicalQueryString(searchParams: URLSearchParams): string {
 // 规范化请求头
 function canonicalHeaders(headers: Record<string, string>): string {
   const canonical: string[] = []
-  const headerKeys = Object.keys(headers).map(k => k.toLowerCase()).sort()
+  
+  // 创建一个小写key到原始value的映射
+  const lowerCaseHeaders: Record<string, string> = {}
+  for (const [key, value] of Object.entries(headers)) {
+    lowerCaseHeaders[key.toLowerCase()] = value
+  }
+  
+  // 获取所有小写的key并排序
+  const headerKeys = Object.keys(lowerCaseHeaders).sort()
   
   for (const key of headerKeys) {
-    const value = headers[key] || headers[key.toLowerCase()] || ''
+    const value = lowerCaseHeaders[key] || ''
     canonical.push(`${key}:${value.trim()}\n`)
   }
   
@@ -131,15 +158,42 @@ export async function signRequest(params: SignatureParams): Promise<Record<strin
     'x-amz-content-sha256': payloadHash
   }
 
+  // 获取路径：parsedUrl.pathname 会自动解码，所以我们需要手动提取原始编码的路径
+  // URL 格式：http://host:port/path?query
+  const urlStr = url
+  const schemeEnd = urlStr.indexOf('://') + 3
+  const pathStart = urlStr.indexOf('/', schemeEnd)
+  const queryStart = urlStr.indexOf('?', pathStart)
+  const hashStart = urlStr.indexOf('#', pathStart)
+  
+  let pathname: string
+  if (pathStart === -1) {
+    pathname = '/'
+  } else if (queryStart > 0) {
+    pathname = urlStr.substring(pathStart, queryStart)
+  } else if (hashStart > 0) {
+    pathname = urlStr.substring(pathStart, hashStart)
+  } else {
+    pathname = urlStr.substring(pathStart)
+  }
+
+  // 调试输出
+  console.log('Frontend URL:', urlStr)
+  console.log('Frontend pathname:', pathname)
+
   // 构建规范请求
   const canonicalRequest = [
     method.toUpperCase(),
-    canonicalUri(parsedUrl.pathname),
+    canonicalUri(pathname),
     canonicalQueryString(parsedUrl.searchParams),
     canonicalHeaders(headers),
     signedHeaders(headers),
     payloadHash
   ].join('\n')
+
+  // 调试输出
+  console.log('Frontend CanonicalRequest:')
+  console.log(canonicalRequest)
 
   // 计算规范请求的哈希
   const canonicalRequestHash = await sha256(canonicalRequest)
@@ -155,8 +209,19 @@ export async function signRequest(params: SignatureParams): Promise<Record<strin
 
   // 计算签名
   const signingKey = await getSignatureKey(secretKey, dateStamp, region, service)
-  const signatureBytes = await hmacSha256(signingKey, stringToSign)
-  const signature = Array.from(signatureBytes)
+  const encoder = new TextEncoder()
+  const signatureArrayBuffer = await crypto.subtle.sign(
+    'HMAC',
+    await crypto.subtle.importKey(
+      'raw',
+      signingKey,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    ),
+    encoder.encode(stringToSign)
+  )
+  const signature = Array.from(new Uint8Array(signatureArrayBuffer))
     .map(b => b.toString(16).padStart(2, '0'))
     .join('')
 

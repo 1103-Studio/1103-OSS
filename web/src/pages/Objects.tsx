@@ -4,9 +4,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useDropzone } from 'react-dropzone'
 import { 
   File, Folder, Upload, Trash2, Download, ChevronRight, 
-  Home, RefreshCw 
+  Home, RefreshCw, Share2 
 } from 'lucide-react'
-import { listObjects, uploadObject, deleteObject, getObjectUrl } from '../lib/api'
+import { listObjects, uploadObject, deleteObject, getObjectUrl, getPresignedUrl } from '../lib/api'
 import toast from 'react-hot-toast'
 
 export default function Objects() {
@@ -68,8 +68,24 @@ export default function Objects() {
   }
 
   const handleDownload = async (key: string) => {
-    const url = await getObjectUrl(bucket!, key)
-    window.open(url, '_blank')
+    try {
+      const url = await getPresignedUrl(bucket!, key)
+      window.open(url, '_blank')
+    } catch (error) {
+      toast.error('生成下载链接失败')
+      console.error('Failed to generate download URL:', error)
+    }
+  }
+
+  const handleShare = async (key: string) => {
+    try {
+      const url = await getPresignedUrl(bucket!, key)
+      await navigator.clipboard.writeText(url)
+      toast.success('分享链接已复制到剪贴板（有效期7天）')
+    } catch (error) {
+      toast.error('生成分享链接失败')
+      console.error('Failed to generate presigned URL:', error)
+    }
   }
 
   // Build breadcrumb
@@ -193,6 +209,13 @@ export default function Objects() {
                       {new Date(obj.LastModified).toLocaleString()}
                     </td>
                     <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => handleShare(obj.Key)}
+                        className="p-1 text-gray-400 hover:text-blue-500 mr-2"
+                        title="复制分享链接（有效期7天）"
+                      >
+                        <Share2 className="w-5 h-5" />
+                      </button>
                       <button
                         onClick={() => handleDownload(obj.Key)}
                         className="p-1 text-gray-400 hover:text-primary-500 mr-2"

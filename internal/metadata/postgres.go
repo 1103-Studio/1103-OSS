@@ -216,11 +216,11 @@ func (r *PostgresRepository) CreateBucket(ctx context.Context, bucket *Bucket) e
 }
 
 func (r *PostgresRepository) GetBucketByName(ctx context.Context, name string) (*Bucket, error) {
-	query := `SELECT id, name, owner_id, region, acl, versioning, created_at FROM buckets WHERE name = $1`
+	query := `SELECT id, name, owner_id, region, acl, versioning, default_expiry, created_at FROM buckets WHERE name = $1`
 	bucket := &Bucket{}
 	err := r.conn(ctx).QueryRow(ctx, query, name).Scan(
 		&bucket.ID, &bucket.Name, &bucket.OwnerID, &bucket.Region,
-		&bucket.ACL, &bucket.Versioning, &bucket.CreatedAt,
+		&bucket.ACL, &bucket.Versioning, &bucket.DefaultExpiry, &bucket.CreatedAt,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, nil
@@ -229,11 +229,11 @@ func (r *PostgresRepository) GetBucketByName(ctx context.Context, name string) (
 }
 
 func (r *PostgresRepository) GetBucketByID(ctx context.Context, id int64) (*Bucket, error) {
-	query := `SELECT id, name, owner_id, region, acl, versioning, created_at FROM buckets WHERE id = $1`
+	query := `SELECT id, name, owner_id, region, acl, versioning, default_expiry, created_at FROM buckets WHERE id = $1`
 	bucket := &Bucket{}
 	err := r.conn(ctx).QueryRow(ctx, query, id).Scan(
 		&bucket.ID, &bucket.Name, &bucket.OwnerID, &bucket.Region,
-		&bucket.ACL, &bucket.Versioning, &bucket.CreatedAt,
+		&bucket.ACL, &bucket.Versioning, &bucket.DefaultExpiry, &bucket.CreatedAt,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, nil
@@ -242,7 +242,7 @@ func (r *PostgresRepository) GetBucketByID(ctx context.Context, id int64) (*Buck
 }
 
 func (r *PostgresRepository) ListBuckets(ctx context.Context, ownerID int64) ([]Bucket, error) {
-	query := `SELECT id, name, owner_id, region, acl, versioning, created_at FROM buckets WHERE owner_id = $1 ORDER BY name`
+	query := `SELECT id, name, owner_id, region, acl, versioning, default_expiry, created_at FROM buckets WHERE owner_id = $1 ORDER BY name`
 	rows, err := r.conn(ctx).Query(ctx, query, ownerID)
 	if err != nil {
 		return nil, err
@@ -253,7 +253,7 @@ func (r *PostgresRepository) ListBuckets(ctx context.Context, ownerID int64) ([]
 	for rows.Next() {
 		var bucket Bucket
 		if err := rows.Scan(&bucket.ID, &bucket.Name, &bucket.OwnerID, &bucket.Region,
-			&bucket.ACL, &bucket.Versioning, &bucket.CreatedAt); err != nil {
+			&bucket.ACL, &bucket.Versioning, &bucket.DefaultExpiry, &bucket.CreatedAt); err != nil {
 			return nil, err
 		}
 		buckets = append(buckets, bucket)
@@ -262,7 +262,7 @@ func (r *PostgresRepository) ListBuckets(ctx context.Context, ownerID int64) ([]
 }
 
 func (r *PostgresRepository) ListAllBuckets(ctx context.Context) ([]Bucket, error) {
-	query := `SELECT id, name, owner_id, region, acl, versioning, created_at FROM buckets ORDER BY name`
+	query := `SELECT id, name, owner_id, region, acl, versioning, default_expiry, created_at FROM buckets ORDER BY name`
 	rows, err := r.conn(ctx).Query(ctx, query)
 	if err != nil {
 		return nil, err
@@ -273,7 +273,7 @@ func (r *PostgresRepository) ListAllBuckets(ctx context.Context) ([]Bucket, erro
 	for rows.Next() {
 		var bucket Bucket
 		if err := rows.Scan(&bucket.ID, &bucket.Name, &bucket.OwnerID, &bucket.Region,
-			&bucket.ACL, &bucket.Versioning, &bucket.CreatedAt); err != nil {
+			&bucket.ACL, &bucket.Versioning, &bucket.DefaultExpiry, &bucket.CreatedAt); err != nil {
 			return nil, err
 		}
 		buckets = append(buckets, bucket)
@@ -282,8 +282,8 @@ func (r *PostgresRepository) ListAllBuckets(ctx context.Context) ([]Bucket, erro
 }
 
 func (r *PostgresRepository) UpdateBucket(ctx context.Context, bucket *Bucket) error {
-	query := `UPDATE buckets SET acl = $1, versioning = $2 WHERE id = $3`
-	_, err := r.conn(ctx).Exec(ctx, query, bucket.ACL, bucket.Versioning, bucket.ID)
+	query := `UPDATE buckets SET acl = $1, versioning = $2, default_expiry = $3 WHERE id = $4`
+	_, err := r.conn(ctx).Exec(ctx, query, bucket.ACL, bucket.Versioning, bucket.DefaultExpiry, bucket.ID)
 	return err
 }
 

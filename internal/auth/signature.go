@@ -170,14 +170,26 @@ func (s *SignatureV4) verifyHeaderSignature(r *http.Request, auth *ParsedAuth, s
 
 	if signature != auth.Signature {
 		// 添加详细的调试信息
-		fmt.Printf("DEBUG: Signature mismatch\n")
-		fmt.Printf("  Expected: %s\n", auth.Signature)
-		fmt.Printf("  Calculated: %s\n", signature)
-		fmt.Printf("  Method: %s\n", r.Method)
-		fmt.Printf("  Path: %s\n", r.URL.Path)
-		fmt.Printf("  Host: %s\n", r.Host)
-		fmt.Printf("  SignedHeaders: %v\n", auth.SignedHeaders)
-		fmt.Printf("  CanonicalRequest:\n%s\n", canonicalRequest)
+		fmt.Printf("\n=== BACKEND SIGNATURE MISMATCH ===\n")
+		fmt.Printf("Expected Signature: %s\n", auth.Signature)
+		fmt.Printf("Calculated Signature: %s\n", signature)
+		fmt.Printf("Method: %s\n", r.Method)
+		fmt.Printf("Path: %s\n", r.URL.Path)
+		fmt.Printf("RawPath: %s\n", r.URL.RawPath)
+		fmt.Printf("RequestURI: %s\n", r.RequestURI)
+		fmt.Printf("Host: %s\n", r.Host)
+		fmt.Printf("SignedHeaders: %v\n", auth.SignedHeaders)
+		fmt.Printf("\nStringToSign:\n%s\n", stringToSign)
+		fmt.Printf("\nCanonicalRequest:\n%s\n", canonicalRequest)
+		
+		// 打印请求头用于调试
+		fmt.Printf("\nRequest Headers:\n")
+		for name, values := range r.Header {
+			for _, value := range values {
+				fmt.Printf("  %s: %s\n", name, value)
+			}
+		}
+		fmt.Printf("=== END DEBUG ===\n\n")
 		return fmt.Errorf("signature mismatch: expected=%s calculated=%s", auth.Signature, signature)
 	}
 
@@ -227,6 +239,16 @@ func (s *SignatureV4) verifyQuerySignature(r *http.Request, auth *ParsedAuth, se
 	signature := s.calculateSignature(secretKey, auth.Date, auth.Region, stringToSign)
 
 	if signature != auth.Signature {
+		fmt.Printf("\n=== QUERY SIGNATURE MISMATCH ===\n")
+		fmt.Printf("Expected Signature: %s\n", auth.Signature)
+		fmt.Printf("Calculated Signature: %s\n", signature)
+		fmt.Printf("Method: %s\n", r.Method)
+		fmt.Printf("Path: %s\n", r.URL.Path)
+		fmt.Printf("Query (without sig): %s\n", queryWithoutSig.Encode())
+		fmt.Printf("SignedHeaders: %v\n", auth.SignedHeaders)
+		fmt.Printf("\nStringToSign:\n%s\n", stringToSign)
+		fmt.Printf("\nCanonicalRequest:\n%s\n", canonicalRequest)
+		fmt.Printf("=== END DEBUG ===\n\n")
 		return fmt.Errorf("signature mismatch")
 	}
 
@@ -237,18 +259,12 @@ func (s *SignatureV4) buildCanonicalRequest(r *http.Request, signedHeaders []str
 	// HTTP Method
 	method := r.Method
 
-	// Canonical URI - 需要对路径进行 URI 编码，但保留斜杠
-	uri := r.URL.Path
+	// Canonical URI - 使用原始请求的编码路径
+	// 不要使用 r.URL.Path（已解码），应该使用客户端发送的原始编码路径
+	uri := r.URL.EscapedPath()
 	if uri == "" {
 		uri = "/"
 	}
-	// 对路径的每个部分进行编码（斜杠分隔），但保留斜杠本身
-	// 使用 PathEscape 而不是 QueryEscape，空格编码为 %20 而不是 +
-	parts := strings.Split(uri, "/")
-	for i, part := range parts {
-		parts[i] = url.PathEscape(part)
-	}
-	uri = strings.Join(parts, "/")
 
 	// Canonical Query String
 	queryString := s.buildCanonicalQueryString(r.URL.Query())

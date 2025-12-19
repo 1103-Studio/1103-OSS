@@ -58,6 +58,7 @@ func (s *Server) setupRoutes() {
 	// 用户个人操作路由（需要认证）
 	user := s.engine.Group("/user")
 	user.Use(s.authMiddleware())
+	user.Use(s.AuditMiddleware())
 	{
 		user.POST("/change-password", s.ChangePassword)
 	}
@@ -70,6 +71,11 @@ func (s *Server) setupRoutes() {
 		admin.POST("/users", s.CreateUser)
 		admin.PUT("/users/:id", s.UpdateUser)
 		admin.DELETE("/users/:id", s.DeleteUser)
+		
+		// 审计日志路由
+		admin.GET("/audit-logs", s.GetAuditLogs)
+		admin.GET("/audit-logs/stats", s.GetAuditLogStats)
+		admin.GET("/audit-logs/recent", s.GetRecentActions)
 	}
 
 	// S3 API 路由组
@@ -82,6 +88,11 @@ func (s *Server) setupRoutes() {
 		// Bucket 操作
 		s3Group.HEAD("/:bucket", s.s3Handler.HeadBucket)
 		s3Group.PUT("/:bucket", func(c *gin.Context) {
+			// 检查是否为 Settings 操作
+			if c.Query("settings") != "" {
+				s.UpdateBucketSettings(c)
+				return
+			}
 			// 检查是否为 Policy 操作
 			if c.Query("policy") != "" {
 				s.s3Handler.PutBucketPolicy(c)
@@ -98,6 +109,11 @@ func (s *Server) setupRoutes() {
 			s.s3Handler.DeleteBucket(c)
 		})
 		s3Group.GET("/:bucket", func(c *gin.Context) {
+			// 检查是否为 Settings 操作
+			if c.Query("settings") != "" {
+				s.GetBucketSettings(c)
+				return
+			}
 			// 检查是否为 Policy 操作
 			if c.Query("policy") != "" {
 				s.s3Handler.GetBucketPolicy(c)

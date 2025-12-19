@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS buckets (
     region          VARCHAR(64) DEFAULT 'default',
     acl             VARCHAR(32) DEFAULT 'private',
     versioning      BOOLEAN DEFAULT FALSE,
+    default_expiry  VARCHAR(32) DEFAULT '7d',
     created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

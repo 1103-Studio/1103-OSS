@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { FolderOpen, Plus, Trash2, X, Info, Copy, Check, Lock, Unlock } from 'lucide-react'
-import { listBuckets, createBucket, deleteBucket } from '../lib/api'
+import { listBuckets, createBucket, deleteBucket, getBucketSettings, updateBucketSettings } from '../lib/api'
 import { getSignedHeaders } from '../lib/aws-signature-v4'
 import axios from 'axios'
 import toast from 'react-hot-toast'
@@ -16,6 +16,8 @@ export default function Buckets() {
   const [copiedField, setCopiedField] = useState<string | null>(null)
   const [isPublic, setIsPublic] = useState(false)
   const [isUpdatingPolicy, setIsUpdatingPolicy] = useState(false)
+  const [defaultExpiry, setDefaultExpiry] = useState('7d')
+  const [isUpdatingExpiry, setIsUpdatingExpiry] = useState(false)
   const [bucketPolicies, setBucketPolicies] = useState<Record<string, boolean>>({})
   const [togglingBucket, setTogglingBucket] = useState<string | null>(null)
 
@@ -99,27 +101,45 @@ export default function Buckets() {
   const handleShowInfo = async (bucket: { Name: string; CreationDate: string }) => {
     setSelectedBucket(bucket)
     setShowInfoModal(true)
-    
-    // 检查 bucket 是否公开
-    try {
-      const creds = JSON.parse(localStorage.getItem('oss_credentials') || '{}')
-      const headers = await getSignedHeaders(
-        'GET',
-        `http://localhost:9000/${bucket.Name}?policy`,
-        creds.accessKey,
-        creds.secretKey
-      )
-      const response = await axios.get(`http://localhost:9000/${bucket.Name}?policy`, { headers })
-      // 如果有 policy 且包含公开读，设置为 true
-      setIsPublic(response.data?.Statement?.some((s: any) => 
-        s.Effect === 'Allow' && s.Principal === '*' && 
-        (s.Action === 's3:GetObject' || s.Action?.includes('s3:GetObject'))
-      ) || false)
-    } catch (err) {
-      // 没有 policy 或访问失败，默认私有
-      setIsPublic(false)
-    }
   }
+
+  useEffect(() => {
+    if (selectedBucket) {
+      // 获取 bucket policy 判断是否公开
+      const fetchPolicy = async () => {
+        try {
+          const creds = JSON.parse(localStorage.getItem('oss_credentials') || '{}')
+          const headers = await getSignedHeaders(
+            'GET',
+            `http://localhost:9000/${selectedBucket.Name}?policy`,
+            creds.accessKey,
+            creds.secretKey
+          )
+          const response = await axios.get(`http://localhost:9000/${selectedBucket.Name}?policy`, { headers })
+          // 如果有 policy 且包含公开读，设置为 true
+          setIsPublic(response.data?.Statement?.some((s: any) => 
+            s.Effect === 'Allow' && s.Principal === '*' && 
+            (s.Action === 's3:GetObject' || s.Action?.includes('s3:GetObject'))
+          ) || false)
+        } catch (err) {
+          setIsPublic(false)
+        }
+      }
+      
+      // 获取 bucket 设置
+      const fetchSettings = async () => {
+        try {
+          const settings = await getBucketSettings(selectedBucket.Name)
+          setDefaultExpiry(settings.default_expiry || '7d')
+        } catch (err) {
+          setDefaultExpiry('7d')
+        }
+      }
+      
+      fetchPolicy()
+      fetchSettings()
+    }
+  }, [selectedBucket])
 
   const copyToClipboard = async (text: string, field: string) => {
     try {
@@ -486,6 +506,42 @@ export default function Buckets() {
                     {isUpdatingPolicy ? '处理中...' : `切换为${isPublic ? '私有' : '公开读'}`}
                   </button>
                 </div>
+              </div>
+
+              {/* 外链时效性设置 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  分享链接默认有效期
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="text"
+                    value={defaultExpiry}
+                    onChange={(e) => setDefaultExpiry(e.target.value)}
+                    placeholder="例如: 7d, 4w, 2h30m"
+                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                  <button
+                    onClick={async () => {
+                      setIsUpdatingExpiry(true)
+                      try {
+                        await updateBucketSettings(selectedBucket.Name, defaultExpiry)
+                        toast.success('有效期设置已更新')
+                      } catch (err: any) {
+                        toast.error(err.response?.data?.Message || '更新失败')
+                      } finally {
+                        setIsUpdatingExpiry(false)
+                      }
+                    }}
+                    disabled={isUpdatingExpiry}
+                    className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded transition-colors disabled:opacity-50"
+                  >
+                    {isUpdatingExpiry ? '更新中...' : '保存'}
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  支持格式: w(周) d(天) h(小时) m(分钟) s(秒)，例如 "30s", "5m", "2h30m", "7d"，范围: 10秒-30天
+                </p>
               </div>
 
               {/* Usage Example */}

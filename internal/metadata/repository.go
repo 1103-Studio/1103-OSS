@@ -31,13 +31,14 @@ type Credential struct {
 
 // Bucket 存储桶
 type Bucket struct {
-	ID         int64
-	Name       string
-	OwnerID    int64
-	Region     string
-	ACL        string
-	Versioning bool
-	CreatedAt  time.Time
+	ID            int64
+	Name          string
+	OwnerID       int64
+	Region        string
+	ACL           string
+	Versioning    bool
+	DefaultExpiry string // 预签名URL默认过期时间，如 "7d", "4w", "2h30m"
+	CreatedAt     time.Time
 }
 
 // Object 对象
@@ -127,6 +128,12 @@ type Repository interface {
 	SetBucketPolicy(ctx context.Context, bucketID int64, policy []byte) error
 	GetBucketPolicy(ctx context.Context, bucketID int64) ([]byte, error)
 	DeleteBucketPolicy(ctx context.Context, bucketID int64) error
+
+	// Audit Logs
+	CreateAuditLog(ctx context.Context, log *AuditLog) error
+	GetAuditLogs(ctx context.Context, filter *AuditLogFilter) ([]*AuditLog, error)
+	GetAuditLogStats(ctx context.Context, startTime, endTime time.Time) (map[string]interface{}, error)
+	GetRecentActions(ctx context.Context, limit int) ([]*AuditLog, error)
 
 	// Object 操作
 	CreateObject(ctx context.Context, obj *Object) error
