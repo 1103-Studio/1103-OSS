@@ -15,10 +15,11 @@ import (
 
 // Server API 服务器
 type Server struct {
-	engine    *gin.Engine
-	s3Handler *s3.Handler
-	repo      metadata.Repository
-	config    *config.Config
+	engine            *gin.Engine
+	s3Handler         *s3.Handler
+	migrationHandler  *MigrationHandler
+	repo              metadata.Repository
+	config            *config.Config
 }
 
 // NewServer 创建 API 服务器
@@ -28,12 +29,14 @@ func NewServer(cfg *config.Config, storageEngine storage.Engine, repo metadata.R
 	engine.Use(gin.Recovery())
 
 	s3Handler := s3.NewHandler(storageEngine, repo, "us-east-1")
+	migrationHandler := NewMigrationHandler(storageEngine, repo, "us-east-1")
 
 	server := &Server{
-		engine:    engine,
-		s3Handler: s3Handler,
-		repo:      repo,
-		config:    cfg,
+		engine:           engine,
+		s3Handler:        s3Handler,
+		migrationHandler: migrationHandler,
+		repo:             repo,
+		config:           cfg,
 	}
 
 	server.setupRoutes()
@@ -76,6 +79,9 @@ func (s *Server) setupRoutes() {
 		admin.GET("/audit-logs", s.GetAuditLogs)
 		admin.GET("/audit-logs/stats", s.GetAuditLogStats)
 		admin.GET("/audit-logs/recent", s.GetRecentActions)
+		
+		// 迁移路由
+		admin.POST("/migration/start", s.migrationHandler.StartMigration)
 	}
 
 	// S3 API 路由组

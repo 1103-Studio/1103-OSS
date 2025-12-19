@@ -5,7 +5,7 @@ interface SignatureParams {
   method: string
   url: string
   headers: Record<string, string>
-  body?: string | ArrayBuffer | null
+  body?: string | ArrayBuffer | Blob | null
   accessKey: string
   secretKey: string
   region?: string
@@ -26,16 +26,15 @@ export async function hmacSha256(key: Uint8Array | string, message: string): Pro
   const keyData = typeof key === 'string' ? encoder.encode(key) : key
   const messageData = encoder.encode(message)
   
-  // @ts-ignore - Uint8Array is compatible with BufferSource at runtime
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    keyData,
+    keyData as BufferSource,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign']
   )
   
-  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData)
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData as BufferSource)
   const signatureArray = Array.from(new Uint8Array(signature))
   return signatureArray.map(b => b.toString(16).padStart(2, '0')).join('')
 }
@@ -46,16 +45,15 @@ async function hmacSha256Bytes(key: Uint8Array | string, message: string): Promi
   const keyData = typeof key === 'string' ? encoder.encode(key) : key
   const messageData = encoder.encode(message)
   
-  // @ts-ignore
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    keyData,
+    keyData as BufferSource,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign']
   )
   
-  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData)
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData as BufferSource)
   return new Uint8Array(signature)
 }
 
@@ -214,12 +212,12 @@ export async function signRequest(params: SignatureParams): Promise<Record<strin
     'HMAC',
     await crypto.subtle.importKey(
       'raw',
-      signingKey,
+      signingKey as BufferSource,
       { name: 'HMAC', hash: 'SHA-256' },
       false,
       ['sign']
     ),
-    encoder.encode(stringToSign)
+    encoder.encode(stringToSign) as BufferSource
   )
   const signature = Array.from(new Uint8Array(signatureArrayBuffer))
     .map(b => b.toString(16).padStart(2, '0'))
@@ -249,11 +247,11 @@ export async function getSignedHeaders(
   
   // 对于 File/Blob 等二进制数据，直接传递原始对象
   // signRequest 会将其处理为 UNSIGNED-PAYLOAD
-  let requestBody: string | ArrayBuffer | null = null
+  let requestBody: string | ArrayBuffer | Blob | null = null
   if (typeof body === 'string') {
     requestBody = body
   } else if (body instanceof File || body instanceof Blob || body instanceof ArrayBuffer) {
-    requestBody = body
+    requestBody = body as ArrayBuffer | Blob
   } else if (body !== null && body !== undefined) {
     requestBody = JSON.stringify(body)
   }

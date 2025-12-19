@@ -6,7 +6,7 @@ import {
   File, Folder, Upload, Trash2, Download, ChevronRight, 
   Home, RefreshCw, Share2 
 } from 'lucide-react'
-import { listObjects, uploadObject, deleteObject, getObjectUrl, getPresignedUrl } from '../lib/api'
+import { listObjects, uploadObject, deleteObject, getPresignedUrl } from '../lib/api'
 import toast from 'react-hot-toast'
 
 export default function Objects() {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 type Language = 'zh' | 'en'
 
@@ -17,6 +17,7 @@ const translations = {
     dashboard: '仪表板',
     buckets: '存储桶',
     settings: '设置',
+    about: '关于',
     logout: '退出登录',
     
     // 登录

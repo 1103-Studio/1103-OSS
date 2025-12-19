@@ -7,6 +7,7 @@ import Settings from './pages/Settings'
 import About from './pages/About'
 import Login from './pages/Login'
 import AuditLogs from './pages/AuditLogs'
+import Migration from './pages/Migration'
 import { useAuth } from './hooks/useAuth'
 
 function App() {
@@ -22,6 +23,7 @@ function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/buckets" element={<Buckets />} />
         <Route path="/buckets/:bucket/*" element={<Objects />} />
+        <Route path="/migration" element={<Migration />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/audit-logs" element={<AuditLogs />} />
         <Route path="/about" element={<About />} />

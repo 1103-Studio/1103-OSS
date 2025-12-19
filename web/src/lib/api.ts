@@ -248,7 +248,7 @@ export async function getPresignedUrl(bucket: string, key: string, expiresInSeco
   const creds = getCredentials()
   if (!creds) throw new Error('No credentials')
   
-  const { sha256, hmacSha256 } = await import('./aws-signature-v4')
+  const { sha256 } = await import('./aws-signature-v4')
   
   const encodedKey = key.split('/').map(segment => encodeURIComponent(segment)).join('/')
   const path = `/${bucket}/${encodedKey}`
