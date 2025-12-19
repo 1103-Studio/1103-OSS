@@ -30,6 +30,8 @@ auth:
   root_user: "admin"
   root_password: "admin123"
   token_expire_hours: 24
+  init_access_key: ""
+  init_access_secret: ""
 
 logging:
   level: "debug"  # debug | info | warn | error

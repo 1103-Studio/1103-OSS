@@ -10,7 +10,6 @@ import {
   Monitor,
   Globe,
   Info,
-  Users,
   FileText
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
@@ -33,7 +32,6 @@ export default function Layout({ children }: LayoutProps) {
   const navItems = [
     { name: t('dashboard'), path: '/', icon: Monitor },
     { name: t('buckets'), path: '/buckets', icon: FolderOpen },
-    { name: t('users'), path: '/users', icon: Users },
     { name: 'Audit Logs', path: '/audit-logs', icon: FileText },
     { name: t('settings'), path: '/settings', icon: Settings },
     { name: t('about'), path: '/about', icon: Info },

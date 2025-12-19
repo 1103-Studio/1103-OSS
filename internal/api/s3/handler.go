@@ -277,6 +277,14 @@ func (h *Handler) PutObject(c *gin.Context) {
 	contentType := c.GetHeader("Content-Type")
 	if contentType == "" {
 		contentType = "application/octet-stream"
+	} else if !strings.Contains(contentType, "charset") {
+		// 为文本类型自动添加 UTF-8 字符集
+		if strings.HasPrefix(contentType, "text/") || 
+		   contentType == "application/json" ||
+		   contentType == "application/xml" ||
+		   contentType == "application/javascript" {
+			contentType += "; charset=utf-8"
+		}
 	}
 
 	// 获取 Content-Length
@@ -350,7 +358,19 @@ func (h *Handler) GetObject(c *gin.Context) {
 	}
 	defer reader.Close()
 
-	c.Header("Content-Type", obj.ContentType)
+	// 处理 Content-Type，为文本类型添加 charset=utf-8
+	contentType := obj.ContentType
+	if contentType != "" && !strings.Contains(contentType, "charset") {
+		// 为文本类型自动添加 UTF-8 字符集
+		if strings.HasPrefix(contentType, "text/") || 
+		   contentType == "application/json" ||
+		   contentType == "application/xml" ||
+		   contentType == "application/javascript" {
+			contentType += "; charset=utf-8"
+		}
+	}
+
+	c.Header("Content-Type", contentType)
 	c.Header("Content-Length", fmt.Sprintf("%d", obj.Size))
 	c.Header("ETag", fmt.Sprintf("\"%s\"", obj.ETag))
 	c.Header("Last-Modified", obj.UpdatedAt.UTC().Format(http.TimeFormat))
@@ -391,8 +411,19 @@ func (h *Handler) handleRangeRequest(c *gin.Context, bucket, key string, obj *me
 	}
 	defer reader.Close()
 
+	// 处理 Content-Type，为文本类型添加 charset=utf-8
+	contentType := obj.ContentType
+	if contentType != "" && !strings.Contains(contentType, "charset") {
+		if strings.HasPrefix(contentType, "text/") || 
+		   contentType == "application/json" ||
+		   contentType == "application/xml" ||
+		   contentType == "application/javascript" {
+			contentType += "; charset=utf-8"
+		}
+	}
+
 	contentLength := end - start + 1
-	c.Header("Content-Type", obj.ContentType)
+	c.Header("Content-Type", contentType)
 	c.Header("Content-Length", fmt.Sprintf("%d", contentLength))
 	c.Header("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, obj.Size))
 	c.Header("ETag", fmt.Sprintf("\"%s\"", obj.ETag))
@@ -428,7 +459,18 @@ func (h *Handler) HeadObject(c *gin.Context) {
 		return
 	}
 
-	c.Header("Content-Type", obj.ContentType)
+	// 处理 Content-Type，为文本类型添加 charset=utf-8
+	contentType := obj.ContentType
+	if contentType != "" && !strings.Contains(contentType, "charset") {
+		if strings.HasPrefix(contentType, "text/") || 
+		   contentType == "application/json" ||
+		   contentType == "application/xml" ||
+		   contentType == "application/javascript" {
+			contentType += "; charset=utf-8"
+		}
+	}
+
+	c.Header("Content-Type", contentType)
 	c.Header("Content-Length", fmt.Sprintf("%d", obj.Size))
 	c.Header("ETag", fmt.Sprintf("\"%s\"", obj.ETag))
 	c.Header("Last-Modified", obj.UpdatedAt.UTC().Format(http.TimeFormat))
