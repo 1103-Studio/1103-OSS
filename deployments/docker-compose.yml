@@ -54,6 +54,8 @@ services:
       - OSS_STORAGE_LOCAL_BASE_PATH=/data/oss
       - OSS_AUTH_ROOT_USER=${ROOT_USER:-admin}
       - OSS_AUTH_ROOT_PASSWORD=${ROOT_PASSWORD:-admin123}
+      - OSS_AUTH_INIT_ACCESS_KEY=${INIT_ACCESS_KEY:-}
+      - OSS_AUTH_INIT_ACCESS_SECRET=${INIT_ACCESS_SECRET:-}
       - OSS_LOGGING_LEVEL=info
     volumes:
       - oss-data:/data/oss
@@ -87,6 +89,8 @@ services:
       - OSS_STORAGE_LOCAL_BASE_PATH=/data/oss
       - OSS_AUTH_ROOT_USER=${ROOT_USER:-admin}
       - OSS_AUTH_ROOT_PASSWORD=${ROOT_PASSWORD:-admin123}
+      - OSS_AUTH_INIT_ACCESS_KEY=${INIT_ACCESS_KEY:-}
+      - OSS_AUTH_INIT_ACCESS_SECRET=${INIT_ACCESS_SECRET:-}
       - OSS_LOGGING_LEVEL=debug
     volumes:
       - ..:/app

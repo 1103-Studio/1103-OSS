@@ -57,18 +57,18 @@ func (s *Server) UpdateBucketSettings(c *gin.Context) {
 	// 获取存储桶
 	bucket, err := s.repo.GetBucketByName(c.Request.Context(), bucketName)
 	if err != nil {
-		s.sendError(c, http.StatusInternalServerError, response.ErrInternalError, err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	if bucket == nil {
-		s.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Bucket not found")
+		c.JSON(http.StatusNotFound, gin.H{"error": "Bucket not found"})
 		return
 	}
 
 	// 更新设置
 	bucket.DefaultExpiry = req.DefaultExpiry
 	if err := s.repo.UpdateBucket(c.Request.Context(), bucket); err != nil {
-		s.sendError(c, http.StatusInternalServerError, response.ErrInternalError, err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -84,11 +84,11 @@ func (s *Server) GetBucketSettings(c *gin.Context) {
 
 	bucket, err := s.repo.GetBucketByName(c.Request.Context(), bucketName)
 	if err != nil {
-		s.sendError(c, http.StatusInternalServerError, response.ErrInternalError, err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	if bucket == nil {
-		s.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Bucket not found")
+		c.JSON(http.StatusNotFound, gin.H{"error": "Bucket not found"})
 		return
 	}
 

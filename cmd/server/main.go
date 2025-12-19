@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -129,10 +131,26 @@ func initAdminUser(repo metadata.Repository, cfg *config.Config) error {
 	}
 
 	if len(credentials) == 0 {
-		// 生成凭证
-		accessKey, secretKey, err := auth.GenerateCredentials()
-		if err != nil {
-			return err
+		var accessKey, secretKey string
+		var err error
+
+		// 检查环境变量中是否已设置初始凭证
+		if cfg.Auth.InitAccessKey != "" && cfg.Auth.InitAccessSecret != "" {
+			accessKey = cfg.Auth.InitAccessKey
+			secretKey = cfg.Auth.InitAccessSecret
+			logger.Infof("Using initial credentials from environment variables")
+		} else {
+			// 生成新凭证
+			accessKey, secretKey, err = auth.GenerateCredentials()
+			if err != nil {
+				return err
+			}
+			logger.Infof("Generated new admin credentials")
+
+			// 将生成的凭证写入 .env 文件
+			if err := saveCredentialsToEnv(accessKey, secretKey); err != nil {
+				logger.Warnf("Failed to save credentials to .env file: %v", err)
+			}
 		}
 
 		cred := &metadata.Credential{
@@ -146,11 +164,89 @@ func initAdminUser(repo metadata.Repository, cfg *config.Config) error {
 			return err
 		}
 
-		logger.Infof("Generated admin credentials:")
+		logger.Infof("Admin credentials:")
 		logger.Infof("  Access Key: %s", accessKey)
 		logger.Infof("  Secret Key: %s", secretKey)
 		logger.Infof("Please save these credentials securely!")
 	}
 
+	return nil
+}
+
+// saveCredentialsToEnv 将生成的凭证保存到 .env 文件
+func saveCredentialsToEnv(accessKey, secretKey string) error {
+	envPath := ".env"
+
+	// 检查 .env 文件是否存在
+	if _, err := os.Stat(envPath); os.IsNotExist(err) {
+		// 如果不存在，从 .env.example 复制
+		if _, err := os.Stat(".env.example"); err == nil {
+			content, err := os.ReadFile(".env.example")
+			if err != nil {
+				return fmt.Errorf("failed to read .env.example: %w", err)
+			}
+			if err := os.WriteFile(envPath, content, 0644); err != nil {
+				return fmt.Errorf("failed to create .env from template: %w", err)
+			}
+		} else {
+			// 创建新的 .env 文件
+			if err := os.WriteFile(envPath, []byte(""), 0644); err != nil {
+				return fmt.Errorf("failed to create .env: %w", err)
+			}
+		}
+	}
+
+	// 读取现有的 .env 文件
+	file, err := os.Open(envPath)
+	if err != nil {
+		return fmt.Errorf("failed to open .env: %w", err)
+	}
+	defer file.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	foundAccessKey := false
+	foundSecretKey := false
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+
+		// 检查是否是 INIT_ACCESS_KEY 行
+		if strings.HasPrefix(trimmed, "INIT_ACCESS_KEY=") {
+			lines = append(lines, fmt.Sprintf("INIT_ACCESS_KEY=%s", accessKey))
+			foundAccessKey = true
+		} else if strings.HasPrefix(trimmed, "INIT_ACCESS_SECRET=") {
+			lines = append(lines, fmt.Sprintf("INIT_ACCESS_SECRET=%s", secretKey))
+			foundSecretKey = true
+		} else {
+			lines = append(lines, line)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("failed to read .env: %w", err)
+	}
+
+	// 如果没有找到配置项，追加到文件末尾
+	if !foundAccessKey || !foundSecretKey {
+		if len(lines) > 0 && lines[len(lines)-1] != "" {
+			lines = append(lines, "")
+		}
+		if !foundAccessKey {
+			lines = append(lines, fmt.Sprintf("INIT_ACCESS_KEY=%s", accessKey))
+		}
+		if !foundSecretKey {
+			lines = append(lines, fmt.Sprintf("INIT_ACCESS_SECRET=%s", secretKey))
+		}
+	}
+
+	// 写回文件
+	content := strings.Join(lines, "\n") + "\n"
+	if err := os.WriteFile(envPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write .env: %w", err)
+	}
+
+	logger.Infof("Credentials saved to .env file")
 	return nil
 }

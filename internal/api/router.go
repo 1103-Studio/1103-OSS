@@ -89,12 +89,12 @@ func (s *Server) setupRoutes() {
 		s3Group.HEAD("/:bucket", s.s3Handler.HeadBucket)
 		s3Group.PUT("/:bucket", func(c *gin.Context) {
 			// 检查是否为 Settings 操作
-			if c.Query("settings") != "" {
+			if _, ok := c.GetQuery("settings"); ok {
 				s.UpdateBucketSettings(c)
 				return
 			}
 			// 检查是否为 Policy 操作
-			if c.Query("policy") != "" {
+			if _, ok := c.GetQuery("policy"); ok {
 				s.s3Handler.PutBucketPolicy(c)
 				return
 			}
@@ -102,7 +102,7 @@ func (s *Server) setupRoutes() {
 		})
 		s3Group.DELETE("/:bucket", func(c *gin.Context) {
 			// 检查是否为 Policy 操作
-			if c.Query("policy") != "" {
+			if _, ok := c.GetQuery("policy"); ok {
 				s.s3Handler.DeleteBucketPolicy(c)
 				return
 			}
@@ -110,12 +110,12 @@ func (s *Server) setupRoutes() {
 		})
 		s3Group.GET("/:bucket", func(c *gin.Context) {
 			// 检查是否为 Settings 操作
-			if c.Query("settings") != "" {
+			if _, ok := c.GetQuery("settings"); ok {
 				s.GetBucketSettings(c)
 				return
 			}
 			// 检查是否为 Policy 操作
-			if c.Query("policy") != "" {
+			if _, ok := c.GetQuery("policy"); ok {
 				s.s3Handler.GetBucketPolicy(c)
 				return
 			}

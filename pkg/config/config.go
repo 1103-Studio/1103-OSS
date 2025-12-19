@@ -68,6 +68,8 @@ type AuthConfig struct {
 	RootUser         string `mapstructure:"root_user"`
 	RootPassword     string `mapstructure:"root_password"`
 	TokenExpireHours int    `mapstructure:"token_expire_hours"`
+	InitAccessKey    string `mapstructure:"init_access_key"`
+	InitAccessSecret string `mapstructure:"init_access_secret"`
 }
 
 type LoggingConfig struct {
