@@ -87,6 +87,7 @@ func (s *Server) setupRoutes() {
 	// S3 API 路由组
 	s3Group := s.engine.Group("")
 	s3Group.Use(s.authMiddleware())
+	s3Group.Use(s.AuditMiddleware())
 	{
 		// Service 操作
 		s3Group.GET("/", s.s3Handler.ListBuckets)

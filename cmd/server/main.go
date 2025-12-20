@@ -175,13 +175,15 @@ func initAdminUser(repo metadata.Repository, cfg *config.Config) error {
 
 // saveCredentialsToEnv 将生成的凭证保存到 .env 文件
 func saveCredentialsToEnv(accessKey, secretKey string) error {
-	envPath := ".env"
+	// 统一使用 deployments/.env 作为配置文件
+	envPath := "deployments/.env"
+	envExamplePath := "deployments/.env.example"
 
 	// 检查 .env 文件是否存在
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
 		// 如果不存在，从 .env.example 复制
-		if _, err := os.Stat(".env.example"); err == nil {
-			content, err := os.ReadFile(".env.example")
+		if _, err := os.Stat(envExamplePath); err == nil {
+			content, err := os.ReadFile(envExamplePath)
 			if err != nil {
 				return fmt.Errorf("failed to read .env.example: %w", err)
 			}

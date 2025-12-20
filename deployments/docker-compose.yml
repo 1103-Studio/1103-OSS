@@ -70,6 +70,7 @@ services:
       - 1103-oss-network
     restart: unless-stopped
     profiles:
+      - prod
       - production
 
   # 1103-OSS API 服务 (开发模式 - 支持热重载)
@@ -114,6 +115,8 @@ services:
     build:
       context: ..
       dockerfile: deployments/docker/Dockerfile.web
+      args:
+        - VITE_API_URL=${API_URL:-}
     container_name: gooss-web
     ports:
       - "9002:80"
@@ -123,6 +126,7 @@ services:
       - 1103-oss-network
     restart: unless-stopped
     profiles:
+      - prod
       - production
 
   # Web 管理界面 (开发模式 - 支持热重载)
@@ -130,7 +134,7 @@ services:
     image: node:20-alpine
     container_name: 1103-oss-web-dev
     working_dir: /app
-    command: sh -c "npm install && npm run dev"
+    command: sh -c "echo 'VITE_API_URL=http://localhost:9000' > .env && npm install && npm run dev"
     volumes:
       - ../web:/app
       - node-modules:/app/node_modules
@@ -159,6 +163,7 @@ services:
       - 1103-oss-network
     restart: unless-stopped
     profiles:
+      - prod
       - production
       - gateway
 

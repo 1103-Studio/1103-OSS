@@ -389,35 +389,110 @@ docker-compose -f deployments/docker-compose.yml up -d gooss-api gooss-web
 
 ## API 支持
 
-### Bucket 操作
+#### Bucket 操作
 
-| 操作 | 方法 | 路径 |
-|------|------|------|
-| ListBuckets | GET | `/` |
-| CreateBucket | PUT | `/{bucket}` |
-| HeadBucket | HEAD | `/{bucket}` |
-| DeleteBucket | DELETE | `/{bucket}` |
+| 操作 | 方法 | 路径 | 查询参数 | 说明 |
+|------|------|------|----------|------|
+| **ListBuckets** | GET | `/` | - | 列出所有存储桶 |
+| **CreateBucket** | PUT | `/{bucket}` | - | 创建存储桶 |
+| **HeadBucket** | HEAD | `/{bucket}` | - | 检查存储桶是否存在 |
+| **DeleteBucket** | DELETE | `/{bucket}` | - | 删除存储桶（必须为空） |
+| **ListObjects** | GET | `/{bucket}` | `prefix`, `delimiter`, `marker`, `max-keys` | 列出对象 |
+| **GetBucketPolicy** | GET | `/{bucket}?policy` | - | 获取存储桶策略 |
+| **PutBucketPolicy** | PUT | `/{bucket}?policy` | - | 设置存储桶策略 |
+| **DeleteBucketPolicy** | DELETE | `/{bucket}?policy` | - | 删除存储桶策略 |
+| **GetBucketSettings** | GET | `/{bucket}?settings` | - | 获取存储桶设置 |
+| **UpdateBucketSettings** | PUT | `/{bucket}?settings` | - | 更新存储桶设置 |
 
-### Object 操作
+**ListObjects 查询参数：**
+- `prefix`: 对象键前缀
+- `delimiter`: 分隔符（通常为 `/`，用于模拟文件夹）
+- `marker`: 分页标记
+- `max-keys`: 返回的最大对象数
 
-| 操作 | 方法 | 路径 |
-|------|------|------|
-| ListObjects | GET | `/{bucket}` |
-| PutObject | PUT | `/{bucket}/{key}` |
-| GetObject | GET | `/{bucket}/{key}` |
-| HeadObject | HEAD | `/{bucket}/{key}` |
-| DeleteObject | DELETE | `/{bucket}/{key}` |
-| CopyObject | PUT | `/{bucket}/{key}` + `x-amz-copy-source` |
+#### Object 操作
 
-### 分片上传
+| 操作 | 方法 | 路径 | 请求头 | 说明 |
+|------|------|------|--------|------|
+| **PutObject** | PUT | `/{bucket}/{key}` | `Content-Type`, `Content-Length` | 上传对象 |
+| **GetObject** | GET | `/{bucket}/{key}` | `Range` (可选) | 下载对象 |
+| **HeadObject** | HEAD | `/{bucket}/{key}` | - | 获取对象元数据 |
+| **DeleteObject** | DELETE | `/{bucket}/{key}` | - | 删除对象 |
+| **CopyObject** | PUT | `/{bucket}/{key}` | `x-amz-copy-source` | 复制对象 |
 
-| 操作 | 方法 | 路径 |
-|------|------|------|
-| CreateMultipartUpload | POST | `/{bucket}/{key}?uploads` |
-| UploadPart | PUT | `/{bucket}/{key}?partNumber=&uploadId=` |
-| CompleteMultipartUpload | POST | `/{bucket}/{key}?uploadId=` |
-| AbortMultipartUpload | DELETE | `/{bucket}/{key}?uploadId=` |
-| ListParts | GET | `/{bucket}/{key}?uploadId=` |
+**预签名 URL：**
+```bash
+# 生成临时访问链接（7天有效期）
+GET /{bucket}/{key}?X-Amz-Algorithm=AWS4-HMAC-SHA256&...
+```
+
+#### 分片上传 (Multipart Upload)
+
+| 操作 | 方法 | 路径 | 说明 |
+|------|------|------|------|
+| **CreateMultipartUpload** | POST | `/{bucket}/{key}?uploads` | 初始化分片上传 |
+| **UploadPart** | PUT | `/{bucket}/{key}?partNumber={n}&uploadId={id}` | 上传分片 |
+| **CompleteMultipartUpload** | POST | `/{bucket}/{key}?uploadId={id}` | 完成分片上传 |
+| **AbortMultipartUpload** | DELETE | `/{bucket}/{key}?uploadId={id}` | 取消分片上传 |
+| **ListParts** | GET | `/{bucket}/{key}?uploadId={id}` | 列出已上传分片 |
+
+**分片上传流程：**
+1. 调用 `CreateMultipartUpload` 获取 `uploadId`
+2. 并发上传多个分片（`UploadPart`），记录每个分片的 `ETag`
+3. 调用 `CompleteMultipartUpload` 完成上传，提供所有分片的 `ETag`
+
+### 认证方式
+
+#### AWS Signature V4 (推荐)
+
+所有 S3 API 请求必须使用 AWS Signature V4 签名：
+
+```
+Authorization: AWS4-HMAC-SHA256 Credential=<access-key>/20231220/us-east-1/s3/aws4_request, 
+SignedHeaders=host;x-amz-content-sha256;x-amz-date, 
+Signature=<signature>
+```
+
+**必需请求头：**
+- `Host`: API 端点域名
+- `x-amz-content-sha256`: 请求体的 SHA256 哈希
+- `x-amz-date`: ISO 8601 格式的时间戳
+
+#### 预签名 URL
+
+用于临时授权访问，无需在请求中包含签名头：
+
+```
+GET /bucket/object?X-Amz-Algorithm=AWS4-HMAC-SHA256
+  &X-Amz-Credential=<access-key>/20231220/us-east-1/s3/aws4_request
+  &X-Amz-Date=20231220T120000Z
+  &X-Amz-Expires=604800
+  &X-Amz-SignedHeaders=host
+  &X-Amz-Signature=<signature>
+```
+
+### 错误响应
+
+所有错误响应使用 S3 标准 XML 格式：
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Error>
+  <Code>NoSuchBucket</Code>
+  <Message>The specified bucket does not exist</Message>
+  <Resource>/mybucket</Resource>
+  <RequestId>4442587FB7D0A2F9</RequestId>
+</Error>
+```
+
+**常见错误代码：**
+- `NoSuchBucket` (404): 存储桶不存在
+- `NoSuchKey` (404): 对象不存在
+- `BucketAlreadyExists` (409): 存储桶已存在
+- `InvalidAccessKeyId` (403): Access Key 无效
+- `SignatureDoesNotMatch` (403): 签名验证失败
+- `AccessDenied` (403): 权限不足
+- `BucketNotEmpty` (409): 存储桶不为空（无法删除）
 
 ## SDK 使用示例
 

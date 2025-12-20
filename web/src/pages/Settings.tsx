@@ -3,6 +3,8 @@ import { useAuth } from '../hooks/useAuth'
 import { Key, Server, Shield, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
+import { getSignedHeaders } from '../lib/aws-signature-v4'
+import { API_BASE_URL } from '../lib/api'
 
 export default function Settings() {
   const { credentials } = useAuth()
@@ -32,13 +34,13 @@ export default function Settings() {
       const body = { oldPassword, newPassword }
       const headers = await getSignedHeaders(
         'POST',
-        'http://localhost:9000/user/change-password',
+        `${API_BASE_URL}/user/change-password`,
         creds.accessKey,
         creds.secretKey,
         body
       )
       
-      await axios.post('http://localhost:9000/user/change-password', body, { headers })
+      await axios.post(`${API_BASE_URL}/user/change-password`, body, { headers })
 
       toast.success('密码修改成功')
       setOldPassword('')

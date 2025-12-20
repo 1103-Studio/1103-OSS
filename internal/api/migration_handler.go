@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gooss/server/internal/auth"
 	"github.com/gooss/server/internal/metadata"
 	"github.com/gooss/server/internal/storage"
 	"github.com/gooss/server/pkg/logger"
@@ -242,10 +242,10 @@ func (h *MigrationHandler) listSourceBuckets(endpoint, accessKey, secretKey, reg
 		return nil, err
 	}
 
-	// 使用AWS Signature V4签名
-	if err := auth.SignRequest(req, accessKey, secretKey, region, "s3", nil); err != nil {
-		return nil, fmt.Errorf("failed to sign request: %w", err)
-	}
+	// 添加基本的认证头（MinIO/S3兼容）
+	req.Header.Set("Authorization", fmt.Sprintf("AWS %s:%s", accessKey, secretKey))
+	req.Header.Set("Host", req.URL.Host)
+	req.Header.Set("Date", time.Now().UTC().Format(time.RFC1123))
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -300,9 +300,10 @@ func (h *MigrationHandler) listSourceObjects(endpoint, accessKey, secretKey, reg
 			return nil, err
 		}
 
-		if err := auth.SignRequest(req, accessKey, secretKey, region, "s3", nil); err != nil {
-			return nil, err
-		}
+		req.Header.Set("Authorization", fmt.Sprintf("AWS4 %s:%s", accessKey, secretKey))
+		req.Header.Set("Host", req.URL.Host)
+		req.Header.Set("Date", time.Now().UTC().Format(time.RFC1123))
+		req.Header.Set("X-Amz-Date", time.Now().UTC().Format(time.RFC1123))
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -360,9 +361,10 @@ func (h *MigrationHandler) getSourceObject(endpoint, accessKey, secretKey, regio
 		return nil, "", err
 	}
 
-	if err := auth.SignRequest(req, accessKey, secretKey, region, "s3", nil); err != nil {
-		return nil, "", err
-	}
+	// 添加基本的认证头（MinIO/S3兼容）
+	req.Header.Set("Authorization", fmt.Sprintf("AWS %s:%s", accessKey, secretKey))
+	req.Header.Set("Host", req.URL.Host)
+	req.Header.Set("Date", time.Now().UTC().Format(time.RFC1123))
 
 	resp, err := client.Do(req)
 	if err != nil {

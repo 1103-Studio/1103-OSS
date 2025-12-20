@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { FileText, Filter, Calendar, User, Activity, AlertCircle, CheckCircle, Clock } from 'lucide-react'
 import axios from 'axios'
 import { getSignedHeaders } from '../lib/aws-signature-v4'
+import { API_BASE_URL } from '../lib/api'
 
 interface AuditLog {
   id: number
@@ -37,7 +38,7 @@ export default function AuditLogs() {
       if (filter.bucket_name) params.set('bucket_name', filter.bucket_name)
       params.set('limit', filter.limit.toString())
 
-      const url = `http://localhost:9000/admin/audit-logs?${params}`
+      const url = `${API_BASE_URL}/admin/audit-logs?${params}`
       const headers = await getSignedHeaders('GET', url, creds.accessKey, creds.secretKey)
       const response = await axios.get(url, { headers })
       return response.data.logs || []
@@ -48,7 +49,7 @@ export default function AuditLogs() {
     queryKey: ['audit-stats'],
     queryFn: async () => {
       const creds = JSON.parse(localStorage.getItem('oss_credentials') || '{}')
-      const url = `http://localhost:9000/admin/audit-logs/stats`
+      const url = `${API_BASE_URL}/admin/audit-logs/stats`
       const headers = await getSignedHeaders('GET', url, creds.accessKey, creds.secretKey)
       const response = await axios.get(url, { headers })
       return response.data

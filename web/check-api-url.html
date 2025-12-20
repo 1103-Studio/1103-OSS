@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>检查 API URL 配置</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .info {
+            background: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>环境变量检查工具</h1>
+    
+    <div class="info">
+        <h3>环境信息：</h3>
+        <p><strong>当前页面 URL:</strong> <span id="currentUrl"></span></p>
+        <p><strong>Mode:</strong> <span id="mode"></span></p>
+        <p><strong>VITE_API_URL:</strong> <span id="viteApiUrl"></span></p>
+    </div>
+
+    <div id="result" class="info"></div>
+
+    <script type="module">
+        // 显示当前 URL
+        document.getElementById('currentUrl').textContent = window.location.href;
+        
+        // 显示模式
+        const mode = import.meta.env.MODE;
+        document.getElementById('mode').textContent = mode;
+        
+        // 显示 VITE_API_URL
+        const apiUrl = import.meta.env.VITE_API_URL;
+        document.getElementById('viteApiUrl').textContent = apiUrl || '未设置';
+        
+        // 判断结果
+        const resultDiv = document.getElementById('result');
+        if (apiUrl) {
+            resultDiv.className = 'info success';
+            resultDiv.innerHTML = `
+                <h3>✅ 环境变量配置正确</h3>
+                <p>API URL: ${apiUrl}</p>
+                <p>前端将使用这个地址进行 API 请求</p>
+            `;
+        } else {
+            resultDiv.className = 'info error';
+            resultDiv.innerHTML = `
+                <h3>❌ 环境变量未配置</h3>
+                <p>VITE_API_URL 未设置，将使用默认值</p>
+                <p>请检查 docker-compose 配置和 vite.config.ts</p>
+            `;
+        }
+        
+        // 显示所有环境变量
+        console.log('所有环境变量：', import.meta.env);
+    </script>
+</body>
+</html>

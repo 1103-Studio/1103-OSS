@@ -1,10 +1,29 @@
 import axios from 'axios'
 import { getSignedHeaders } from './aws-signature-v4'
 
-// 直接连接到后端 API，不使用代理
-// 这样可以确保签名的 host 与实际请求的 host 一致
+// API 地址配置
+// 优先级：环境变量 > 当前域名同端口 > localhost
+const getApiBaseUrl = () => {
+  // Vite 环境变量
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL
+  }
+  
+  // 生产环境：使用当前域名的 9000 端口
+  if (import.meta.env.PROD) {
+    const protocol = window.location.protocol
+    const hostname = window.location.hostname
+    return `${protocol}//${hostname}:9000`
+  }
+  
+  // 开发环境：使用 localhost
+  return 'http://localhost:9000'
+}
+
+export const API_BASE_URL = getApiBaseUrl()
+
 const api = axios.create({
-  baseURL: 'http://localhost:9000',
+  baseURL: API_BASE_URL,
 })
 
 // 获取凭证

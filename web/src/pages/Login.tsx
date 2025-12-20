@@ -3,6 +3,7 @@ import { Database } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import toast from 'react-hot-toast'
 import axios from 'axios'
+import { API_BASE_URL } from '../lib/api'
 
 export default function Login() {
   const { login } = useAuth()
@@ -20,13 +21,14 @@ export default function Login() {
 
     setIsLoading(true)
     try {
-      const response = await axios.post('http://localhost:9000/auth/login', {
+      const response = await axios.post(`${API_BASE_URL}/auth/login`, {
         username,
         password
       })
 
-      const { accessKey, secretKey, endpoint } = response.data
-      login({ accessKey, secretKey, endpoint: endpoint || 'http://localhost:9000' })
+      const { accessKey, secretKey } = response.data
+      // 始终使用 API_BASE_URL 作为 endpoint，忽略后端返回的值（可能是 localhost）
+      login({ accessKey, secretKey, endpoint: API_BASE_URL })
       toast.success('登录成功')
     } catch (error: any) {
       if (error.response?.status === 401) {

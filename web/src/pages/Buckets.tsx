@@ -5,7 +5,11 @@ import { FolderOpen, Plus, Trash2, X, Info, Copy, Check, Lock, Unlock } from 'lu
 import { listBuckets, createBucket, deleteBucket, getBucketSettings, updateBucketSettings } from '../lib/api'
 import { getSignedHeaders } from '../lib/aws-signature-v4'
 import axios from 'axios'
+import { API_BASE_URL } from "../lib/api"
 import toast from 'react-hot-toast'
+
+// Helper function to strip protocol from URL
+const stripProtocol = (url: string) => url.replace(/^https?:\/\//, '')
 
 export default function Buckets() {
   const queryClient = useQueryClient()
@@ -37,11 +41,11 @@ export default function Buckets() {
         try {
           const headers = await getSignedHeaders(
             'GET',
-            `http://localhost:9000/${bucket.Name}?policy`,
+            `${API_BASE_URL}/${bucket.Name}?policy`,
             creds.accessKey,
             creds.secretKey
           )
-          const response = await axios.get(`http://localhost:9000/${bucket.Name}?policy`, { headers })
+          const response = await axios.get(`${API_BASE_URL}/${bucket.Name}?policy`, { headers })
           policies[bucket.Name] = response.data?.Statement?.some((s: any) => 
             s.Effect === 'Allow' && s.Principal === '*' && 
             (s.Action === 's3:GetObject' || s.Action?.includes('s3:GetObject'))
@@ -93,8 +97,16 @@ export default function Buckets() {
   }
 
   const handleDelete = (name: string) => {
-    if (confirm(`Are you sure you want to delete bucket "${name}"?`)) {
-      deleteMutation.mutate(name)
+    if (confirm(`确定要删除存储桶 "${name}" 吗？\n\n注意：存储桶必须为空才能删除。如果存储桶中有文件，请先删除所有文件。`)) {
+      deleteMutation.mutate(name, {
+        onError: (error: any) => {
+          if (error.response?.status === 409) {
+            toast.error(`无法删除存储桶 "${name}"：存储桶不为空！\n\n请先删除存储桶中的所有对象，然后再尝试删除存储桶。`)
+          } else {
+            toast.error(`删除存储桶失败: ${error.message}`)
+          }
+        }
+      })
     }
   }
 
@@ -111,11 +123,11 @@ export default function Buckets() {
           const creds = JSON.parse(localStorage.getItem('oss_credentials') || '{}')
           const headers = await getSignedHeaders(
             'GET',
-            `http://localhost:9000/${selectedBucket.Name}?policy`,
+            `${API_BASE_URL}/${selectedBucket.Name}?policy`,
             creds.accessKey,
             creds.secretKey
           )
-          const response = await axios.get(`http://localhost:9000/${selectedBucket.Name}?policy`, { headers })
+          const response = await axios.get(`${API_BASE_URL}/${selectedBucket.Name}?policy`, { headers })
           // 如果有 policy 且包含公开读，设置为 true
           setIsPublic(response.data?.Statement?.some((s: any) => 
             s.Effect === 'Allow' && s.Principal === '*' && 
@@ -233,13 +245,13 @@ export default function Buckets() {
                             }
                             const headers = await getSignedHeaders(
                               'PUT',
-                              `http://localhost:9000/${bucket.Name}?policy`,
+                              `${API_BASE_URL}/${bucket.Name}?policy`,
                               creds.accessKey,
                               creds.secretKey,
                               JSON.stringify(policy)
                             )
                             await axios.put(
-                              `http://localhost:9000/${bucket.Name}?policy`,
+                              `${API_BASE_URL}/${bucket.Name}?policy`,
                               JSON.stringify(policy),
                               { 
                                 headers,
@@ -252,12 +264,12 @@ export default function Buckets() {
                             // 设置为私有
                             const headers = await getSignedHeaders(
                               'DELETE',
-                              `http://localhost:9000/${bucket.Name}?policy`,
+                              `${API_BASE_URL}/${bucket.Name}?policy`,
                               creds.accessKey,
                               creds.secretKey
                             )
                             await axios.delete(
-                              `http://localhost:9000/${bucket.Name}?policy`,
+                              `${API_BASE_URL}/${bucket.Name}?policy`,
                               { 
                                 headers,
                                 validateStatus: (status) => status < 500
@@ -356,10 +368,10 @@ export default function Buckets() {
                 </label>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded text-sm font-mono text-gray-900 dark:text-white break-all">
-                    http://localhost:9000/{selectedBucket.Name}
+                    ${API_BASE_URL}/{selectedBucket.Name}
                   </code>
                   <button
-                    onClick={() => copyToClipboard(`http://localhost:9000/${selectedBucket.Name}`, 'endpoint')}
+                    onClick={() => copyToClipboard(`${API_BASE_URL}/${selectedBucket.Name}`, 'endpoint')}
                     className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
                     title="Copy to clipboard"
                   >
@@ -379,10 +391,10 @@ export default function Buckets() {
                 </label>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded text-sm font-mono text-gray-900 dark:text-white break-all">
-                    s3://localhost:9000/{selectedBucket.Name}
+                    s3://{stripProtocol(API_BASE_URL)}/{selectedBucket.Name}
                   </code>
                   <button
-                    onClick={() => copyToClipboard(`s3://localhost:9000/${selectedBucket.Name}`, 's3endpoint')}
+                    onClick={() => copyToClipboard(`s3://${stripProtocol(API_BASE_URL)}/${selectedBucket.Name}`, 's3endpoint')}
                     className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
                     title="Copy to clipboard"
                   >
@@ -467,13 +479,13 @@ export default function Buckets() {
                           }
                           const headers = await getSignedHeaders(
                             'PUT',
-                            `http://localhost:9000/${selectedBucket?.Name}?policy`,
+                            `${API_BASE_URL}/${selectedBucket?.Name}?policy`,
                             creds.accessKey,
                             creds.secretKey,
                             JSON.stringify(policy)
                           )
                           await axios.put(
-                            `http://localhost:9000/${selectedBucket?.Name}?policy`,
+                            `${API_BASE_URL}/${selectedBucket?.Name}?policy`,
                             JSON.stringify(policy),
                             { headers }
                           )
@@ -483,12 +495,12 @@ export default function Buckets() {
                           // 设置为私有（删除 policy）
                           const headers = await getSignedHeaders(
                             'DELETE',
-                            `http://localhost:9000/${selectedBucket?.Name}?policy`,
+                            `${API_BASE_URL}/${selectedBucket?.Name}?policy`,
                             creds.accessKey,
                             creds.secretKey
                           )
                           await axios.delete(
-                            `http://localhost:9000/${selectedBucket?.Name}?policy`,
+                            `${API_BASE_URL}/${selectedBucket?.Name}?policy`,
                             { headers }
                           )
                           setIsPublic(false)
@@ -551,10 +563,10 @@ export default function Buckets() {
                 </label>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded text-sm font-mono text-gray-900 dark:text-white break-all">
-                    aws s3 ls s3://{selectedBucket.Name} --endpoint-url=http://localhost:9000
+                    aws s3 ls s3://{selectedBucket.Name} --endpoint-url=\${API_BASE_URL}
                   </code>
                   <button
-                    onClick={() => copyToClipboard(`aws s3 ls s3://${selectedBucket.Name} --endpoint-url=http://localhost:9000`, 'cli')}
+                    onClick={() => copyToClipboard(`aws s3 ls s3://${selectedBucket.Name} --endpoint-url=\${API_BASE_URL}`, 'cli')}
                     className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
                     title="Copy to clipboard"
                   >
