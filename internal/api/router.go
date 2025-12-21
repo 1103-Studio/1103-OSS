@@ -32,11 +32,11 @@ func NewServer(cfg *config.Config, storageEngine storage.Engine, repo metadata.R
 	migrationHandler := NewMigrationHandler(storageEngine, repo, "us-east-1")
 
 	server := &Server{
+		cfg:              cfg,
 		engine:           engine,
 		s3Handler:        s3Handler,
 		migrationHandler: migrationHandler,
 		repo:             repo,
-		config:           cfg,
 	}
 
 	server.setupRoutes()

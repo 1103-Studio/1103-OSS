@@ -3,7 +3,6 @@ import { useAuth } from '../hooks/useAuth'
 import { Key, Server, Shield, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
-import { getSignedHeaders } from '../lib/aws-signature-v4'
 import { API_BASE_URL } from '../lib/api'
 
 export default function Settings() {
