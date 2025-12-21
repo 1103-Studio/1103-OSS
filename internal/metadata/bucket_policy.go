@@ -4,8 +4,8 @@ import "encoding/json"
 
 // BucketPolicy S3 Bucket 策略结构
 type BucketPolicy struct {
-	Version   string              `json:"Version"`
-	Statement []PolicyStatement   `json:"Statement"`
+	Version   string            `json:"Version"`
+	Statement []PolicyStatement `json:"Statement"`
 }
 
 // PolicyStatement 策略声明
@@ -21,19 +21,19 @@ func (p *BucketPolicy) IsPublicRead() bool {
 	if p == nil || p.Statement == nil {
 		return false
 	}
-	
+
 	for _, stmt := range p.Statement {
 		// 检查是否允许所有人
 		if stmt.Effect != "Allow" {
 			continue
 		}
-		
+
 		// 检查 Principal 是否为 "*"
 		principalStr, ok := stmt.Principal.(string)
 		if !ok || principalStr != "*" {
 			continue
 		}
-		
+
 		// 检查 Action 是否包含 GetObject
 		actions := []string{}
 		switch v := stmt.Action.(type) {
@@ -46,14 +46,14 @@ func (p *BucketPolicy) IsPublicRead() bool {
 				}
 			}
 		}
-		
+
 		for _, action := range actions {
 			if action == "s3:GetObject" || action == "s3:*" {
 				return true
 			}
 		}
 	}
-	
+
 	return false
 }
 

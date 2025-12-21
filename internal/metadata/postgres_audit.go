@@ -16,7 +16,7 @@ func (r *PostgresRepository) CreateAuditLog(ctx context.Context, log *AuditLog) 
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING id
 	`
-	
+
 	if log.CreatedAt.IsZero() {
 		log.CreatedAt = time.Now()
 	}
@@ -130,11 +130,11 @@ func (r *PostgresRepository) GetAuditLogStats(ctx context.Context, startTime, en
 	`
 
 	var stats struct {
-		TotalOps      int64
-		UniqueUsers   int64
-		FailedOps     int64
-		BucketOps     int64
-		ObjectOps     int64
+		TotalOps    int64
+		UniqueUsers int64
+		FailedOps   int64
+		BucketOps   int64
+		ObjectOps   int64
 	}
 
 	err := r.conn(ctx).QueryRow(ctx, query, startTime, endTime).Scan(
@@ -146,11 +146,11 @@ func (r *PostgresRepository) GetAuditLogStats(ctx context.Context, startTime, en
 	}
 
 	return map[string]interface{}{
-		"total_operations":   stats.TotalOps,
-		"unique_users":       stats.UniqueUsers,
-		"failed_operations":  stats.FailedOps,
-		"bucket_operations":  stats.BucketOps,
-		"object_operations":  stats.ObjectOps,
+		"total_operations":  stats.TotalOps,
+		"unique_users":      stats.UniqueUsers,
+		"failed_operations": stats.FailedOps,
+		"bucket_operations": stats.BucketOps,
+		"object_operations": stats.ObjectOps,
 	}, nil
 }
 

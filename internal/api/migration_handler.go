@@ -38,13 +38,13 @@ type MigrationRequest struct {
 }
 
 type MigrationProgress struct {
-	Status        string `json:"status"`
-	CurrentBucket string `json:"currentBucket"`
-	TotalBuckets  int    `json:"totalBuckets"`
-	CurrentObject string `json:"currentObject"`
-	TotalObjects  int    `json:"totalObjects"`
-	CompletedObjects int `json:"completedObjects"`
-	Errors        []string `json:"errors"`
+	Status           string   `json:"status"`
+	CurrentBucket    string   `json:"currentBucket"`
+	TotalBuckets     int      `json:"totalBuckets"`
+	CurrentObject    string   `json:"currentObject"`
+	TotalObjects     int      `json:"totalObjects"`
+	CompletedObjects int      `json:"completedObjects"`
+	Errors           []string `json:"errors"`
 }
 
 type BucketInfo struct {
@@ -63,7 +63,7 @@ type ObjectInfo struct {
 // StartMigration 启动迁移任务
 func (h *MigrationHandler) StartMigration(c *gin.Context) {
 	userID := c.GetInt64("user_id")
-	
+
 	var req MigrationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
@@ -107,12 +107,12 @@ func (h *MigrationHandler) performMigration(ctx context.Context, userID int64, e
 	// 2. 逐个迁移存储桶
 	for _, bucket := range buckets {
 		logger.Infof("Migrating bucket: %s", bucket.Name)
-		
+
 		if err := h.migrateBucket(ctx, userID, endpoint, accessKey, secretKey, region, bucket); err != nil {
 			logger.Errorf("Failed to migrate bucket %s: %v", bucket.Name, err)
 			continue
 		}
-		
+
 		logger.Infof("Successfully migrated bucket: %s", bucket.Name)
 	}
 
@@ -128,9 +128,9 @@ func (h *MigrationHandler) migrateBucket(ctx context.Context, userID int64, endp
 	if err != nil {
 		return fmt.Errorf("failed to check bucket: %w", err)
 	}
-	
+
 	var targetBucket *metadata.Bucket
-	
+
 	if existing != nil {
 		logger.Infof("Bucket %s already exists, using existing bucket", bucketName)
 		targetBucket = existing
@@ -146,7 +146,7 @@ func (h *MigrationHandler) migrateBucket(ctx context.Context, userID int64, endp
 			Region:  h.region,
 			ACL:     "private",
 		}
-		
+
 		if err := h.repo.CreateBucket(ctx, targetBucket); err != nil {
 			return fmt.Errorf("failed to save bucket metadata: %w", err)
 		}
@@ -209,7 +209,7 @@ func (h *MigrationHandler) migrateObject(ctx context.Context, endpoint, accessKe
 	if contentType == "" {
 		contentType = obj.ContentType
 	}
-	
+
 	objInfo, err := h.storage.Put(ctx, bucketName, obj.Key, reader, obj.Size, contentType)
 	if err != nil {
 		return fmt.Errorf("failed to put object: %w", err)
@@ -236,7 +236,7 @@ func (h *MigrationHandler) migrateObject(ctx context.Context, endpoint, accessKe
 // listSourceBuckets 列出源S3服务器的所有存储桶
 func (h *MigrationHandler) listSourceBuckets(endpoint, accessKey, secretKey, region string) ([]BucketInfo, error) {
 	client := &http.Client{}
-	
+
 	req, err := http.NewRequest("GET", endpoint+"/", nil)
 	if err != nil {
 		return nil, err
@@ -317,7 +317,7 @@ func (h *MigrationHandler) listSourceObjects(endpoint, accessKey, secretKey, reg
 		}
 
 		var result struct {
-			IsTruncated bool `xml:"IsTruncated"`
+			IsTruncated bool   `xml:"IsTruncated"`
 			NextMarker  string `xml:"NextMarker"`
 			Contents    []struct {
 				Key          string `xml:"Key"`
@@ -354,7 +354,7 @@ func (h *MigrationHandler) listSourceObjects(endpoint, accessKey, secretKey, reg
 // getSourceObject 从源获取对象内容
 func (h *MigrationHandler) getSourceObject(endpoint, accessKey, secretKey, region, bucket, key string) (io.ReadCloser, string, error) {
 	url := fmt.Sprintf("%s/%s/%s", endpoint, bucket, key)
-	
+
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {

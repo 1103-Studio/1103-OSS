@@ -15,11 +15,11 @@ import (
 
 // Server API 服务器
 type Server struct {
-	cfg               *config.Config
-	engine            *gin.Engine
-	s3Handler         *s3.Handler
-	migrationHandler  *MigrationHandler
-	repo              metadata.Repository
+	cfg              *config.Config
+	engine           *gin.Engine
+	s3Handler        *s3.Handler
+	migrationHandler *MigrationHandler
+	repo             metadata.Repository
 }
 
 // NewServer 创建 API 服务器
@@ -74,12 +74,12 @@ func (s *Server) setupRoutes() {
 		admin.POST("/users", s.CreateUser)
 		admin.PUT("/users/:id", s.UpdateUser)
 		admin.DELETE("/users/:id", s.DeleteUser)
-		
+
 		// 审计日志路由
 		admin.GET("/audit-logs", s.GetAuditLogs)
 		admin.GET("/audit-logs/stats", s.GetAuditLogStats)
 		admin.GET("/audit-logs/recent", s.GetRecentActions)
-		
+
 		// 迁移路由
 		admin.POST("/migration/start", s.migrationHandler.StartMigration)
 	}
@@ -192,14 +192,14 @@ func (s *Server) objectPostHandler(c *gin.Context) {
 func (s *Server) corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
-		
+
 		// 从配置中获取允许的来源
 		allowedOrigins := s.cfg.Server.AllowedOrigins
 		if len(allowedOrigins) == 0 {
 			// 如果未配置，默认允许所有来源（向后兼容）
 			allowedOrigins = []string{"*"}
 		}
-		
+
 		// 检查来源是否在允许列表中
 		allowed := false
 		for _, allowedOrigin := range allowedOrigins {
@@ -214,13 +214,13 @@ func (s *Server) corsMiddleware() gin.HandlerFunc {
 				break
 			}
 		}
-		
+
 		// 如果来源不在白名单中且不为空，拒绝请求
 		if !allowed && origin != "" && len(allowedOrigins) > 0 && allowedOrigins[0] != "*" {
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
-		
+
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, HEAD, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Amz-Date, X-Amz-Content-Sha256, X-Amz-Security-Token")
 		c.Header("Access-Control-Expose-Headers", "ETag, X-Amz-Request-Id")
@@ -238,8 +238,8 @@ func (s *Server) corsMiddleware() gin.HandlerFunc {
 func (s *Server) authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 跳过不需要认证的路径
-		if c.Request.URL.Path == "/health" || 
-		   strings.HasPrefix(c.Request.URL.Path, "/auth/") {
+		if c.Request.URL.Path == "/health" ||
+			strings.HasPrefix(c.Request.URL.Path, "/auth/") {
 			c.Next()
 			return
 		}

@@ -86,7 +86,7 @@ jobs:
 
       - name: Validate docker-compose.yml
         run: |
-          docker-compose -f deployments/docker-compose.yml config > /dev/null
+          docker compose -f deployments/docker-compose.yml config > /dev/null
           echo "✅ docker-compose.yml is valid"
 
   # 安全扫描
@@ -106,7 +106,8 @@ jobs:
           output: 'trivy-results.sarif'
 
       - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
+        continue-on-error: true  # 如果 Advanced Security 未启用则跳过
         with:
           sarif_file: 'trivy-results.sarif'

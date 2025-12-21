@@ -48,7 +48,7 @@ func (s *Server) AuditMiddleware() gin.HandlerFunc {
 
 		// 确定操作类型和资源
 		action, resourceType, resourceName := s.parseAction(c)
-		
+
 		// 如果无法识别操作，跳过记录
 		if action == "" {
 			return
@@ -107,7 +107,7 @@ func (s *Server) parseAction(c *gin.Context) (action, resourceType, resourceName
 	// Bucket 操作
 	if strings.HasPrefix(path, "/") && !strings.HasPrefix(path, "/api/") {
 		parts := strings.Split(strings.Trim(path, "/"), "/")
-		
+
 		// Bucket policy 操作
 		if c.Request.URL.RawQuery == "policy" {
 			bucketName := parts[0]

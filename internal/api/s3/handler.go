@@ -18,17 +18,17 @@ import (
 
 // Handler S3 API 处理器
 type Handler struct {
-	storage  storage.Engine
-	repo     metadata.Repository
-	region   string
+	storage storage.Engine
+	repo    metadata.Repository
+	region  string
 }
 
 // NewHandler 创建 S3 处理器
 func NewHandler(storage storage.Engine, repo metadata.Repository, region string) *Handler {
 	return &Handler{
-		storage:  storage,
-		repo:     repo,
-		region:   region,
+		storage: storage,
+		repo:    repo,
+		region:  region,
 	}
 }
 
@@ -279,10 +279,10 @@ func (h *Handler) PutObject(c *gin.Context) {
 		contentType = "application/octet-stream"
 	} else if !strings.Contains(contentType, "charset") {
 		// 为文本类型自动添加 UTF-8 字符集
-		if strings.HasPrefix(contentType, "text/") || 
-		   contentType == "application/json" ||
-		   contentType == "application/xml" ||
-		   contentType == "application/javascript" {
+		if strings.HasPrefix(contentType, "text/") ||
+			contentType == "application/json" ||
+			contentType == "application/xml" ||
+			contentType == "application/javascript" {
 			contentType += "; charset=utf-8"
 		}
 	}
@@ -362,10 +362,10 @@ func (h *Handler) GetObject(c *gin.Context) {
 	contentType := obj.ContentType
 	if contentType != "" && !strings.Contains(contentType, "charset") {
 		// 为文本类型自动添加 UTF-8 字符集
-		if strings.HasPrefix(contentType, "text/") || 
-		   contentType == "application/json" ||
-		   contentType == "application/xml" ||
-		   contentType == "application/javascript" {
+		if strings.HasPrefix(contentType, "text/") ||
+			contentType == "application/json" ||
+			contentType == "application/xml" ||
+			contentType == "application/javascript" {
 			contentType += "; charset=utf-8"
 		}
 	}
@@ -414,10 +414,10 @@ func (h *Handler) handleRangeRequest(c *gin.Context, bucket, key string, obj *me
 	// 处理 Content-Type，为文本类型添加 charset=utf-8
 	contentType := obj.ContentType
 	if contentType != "" && !strings.Contains(contentType, "charset") {
-		if strings.HasPrefix(contentType, "text/") || 
-		   contentType == "application/json" ||
-		   contentType == "application/xml" ||
-		   contentType == "application/javascript" {
+		if strings.HasPrefix(contentType, "text/") ||
+			contentType == "application/json" ||
+			contentType == "application/xml" ||
+			contentType == "application/javascript" {
 			contentType += "; charset=utf-8"
 		}
 	}
@@ -462,10 +462,10 @@ func (h *Handler) HeadObject(c *gin.Context) {
 	// 处理 Content-Type，为文本类型添加 charset=utf-8
 	contentType := obj.ContentType
 	if contentType != "" && !strings.Contains(contentType, "charset") {
-		if strings.HasPrefix(contentType, "text/") || 
-		   contentType == "application/json" ||
-		   contentType == "application/xml" ||
-		   contentType == "application/javascript" {
+		if strings.HasPrefix(contentType, "text/") ||
+			contentType == "application/json" ||
+			contentType == "application/xml" ||
+			contentType == "application/javascript" {
 			contentType += "; charset=utf-8"
 		}
 	}

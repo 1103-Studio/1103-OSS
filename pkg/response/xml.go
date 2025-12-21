@@ -139,7 +139,7 @@ type UploadInfo struct {
 
 // CompleteMultipartUpload 完成分片上传请求
 type CompleteMultipartUpload struct {
-	XMLName xml.Name           `xml:"CompleteMultipartUpload"`
+	XMLName xml.Name            `xml:"CompleteMultipartUpload"`
 	Parts   []CompletedPartInfo `xml:"Part"`
 }
 
@@ -159,27 +159,27 @@ type Error struct {
 
 // S3 错误码
 const (
-	ErrAccessDenied             = "AccessDenied"
-	ErrBucketAlreadyExists      = "BucketAlreadyExists"
-	ErrBucketAlreadyOwnedByYou  = "BucketAlreadyOwnedByYou"
-	ErrBucketNotEmpty           = "BucketNotEmpty"
-	ErrInternalError            = "InternalError"
-	ErrInvalidAccessKeyId       = "InvalidAccessKeyId"
-	ErrInvalidArgument          = "InvalidArgument"
-	ErrInvalidBucketName        = "InvalidBucketName"
-	ErrInvalidPart              = "InvalidPart"
-	ErrInvalidPartOrder         = "InvalidPartOrder"
-	ErrInvalidRequest           = "InvalidRequest"
-	ErrMalformedXML             = "MalformedXML"
-	ErrMalformedPolicy          = "MalformedPolicy"
-	ErrMalformedPOSTRequest     = "MalformedPOSTRequest"
-	ErrNoSuchBucket             = "NoSuchBucket"
-	ErrNoSuchKey                = "NoSuchKey"
-	ErrNoSuchBucketPolicy       = "NoSuchBucketPolicy"
-	ErrNoSuchUpload             = "NoSuchUpload"
-	ErrSignatureDoesNotMatch    = "SignatureDoesNotMatch"
-	ErrEntityTooLarge           = "EntityTooLarge"
-	ErrEntityTooSmall           = "EntityTooSmall"
+	ErrAccessDenied            = "AccessDenied"
+	ErrBucketAlreadyExists     = "BucketAlreadyExists"
+	ErrBucketAlreadyOwnedByYou = "BucketAlreadyOwnedByYou"
+	ErrBucketNotEmpty          = "BucketNotEmpty"
+	ErrInternalError           = "InternalError"
+	ErrInvalidAccessKeyId      = "InvalidAccessKeyId"
+	ErrInvalidArgument         = "InvalidArgument"
+	ErrInvalidBucketName       = "InvalidBucketName"
+	ErrInvalidPart             = "InvalidPart"
+	ErrInvalidPartOrder        = "InvalidPartOrder"
+	ErrInvalidRequest          = "InvalidRequest"
+	ErrMalformedXML            = "MalformedXML"
+	ErrMalformedPolicy         = "MalformedPolicy"
+	ErrMalformedPOSTRequest    = "MalformedPOSTRequest"
+	ErrNoSuchBucket            = "NoSuchBucket"
+	ErrNoSuchKey               = "NoSuchKey"
+	ErrNoSuchBucketPolicy      = "NoSuchBucketPolicy"
+	ErrNoSuchUpload            = "NoSuchUpload"
+	ErrSignatureDoesNotMatch   = "SignatureDoesNotMatch"
+	ErrEntityTooLarge          = "EntityTooLarge"
+	ErrEntityTooSmall          = "EntityTooSmall"
 )
 
 // NewError 创建错误响应

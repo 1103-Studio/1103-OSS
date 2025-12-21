@@ -36,7 +36,7 @@ func (s *Server) UpdateBucketSettings(c *gin.Context) {
 		}
 
 		// 限制最小有效期为 10 秒，最大有效期为 30 天
-		minDuration := 10 // 10 seconds
+		minDuration := 10             // 10 seconds
 		maxDuration := 30 * 24 * 3600 // 30 days in seconds
 		if duration.Seconds() < float64(minDuration) {
 			c.JSON(http.StatusBadRequest, response.Error{

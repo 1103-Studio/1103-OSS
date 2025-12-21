@@ -20,19 +20,19 @@ type ObjectInfo struct {
 
 // ListOptions 列表查询选项
 type ListOptions struct {
-	Prefix       string
-	Delimiter    string
-	Marker       string
-	MaxKeys      int
+	Prefix            string
+	Delimiter         string
+	Marker            string
+	MaxKeys           int
 	ContinuationToken string
 }
 
 // ListResult 列表查询结果
 type ListResult struct {
-	Objects        []ObjectInfo
-	CommonPrefixes []string
-	IsTruncated    bool
-	NextMarker     string
+	Objects               []ObjectInfo
+	CommonPrefixes        []string
+	IsTruncated           bool
+	NextMarker            string
 	NextContinuationToken string
 }
 
