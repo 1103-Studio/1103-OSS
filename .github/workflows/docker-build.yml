@@ -103,7 +103,7 @@ jobs:
       - name: Build and push Web image
         uses: docker/build-push-action@v5
         with:
-          context: ./web
+          context: .
           file: ./deployments/docker/Dockerfile.web
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
