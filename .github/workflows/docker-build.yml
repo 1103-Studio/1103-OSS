@@ -123,48 +123,141 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
 
       - name: Extract version from tag
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Releasing version: $VERSION"
 
-      - name: Create Release
+      - name: Build binaries
+        run: |
+          # Linux AMD64
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" -o dist/1103-oss-linux-amd64 ./cmd/server
+          
+          # Linux ARM64
+          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" -o dist/1103-oss-linux-arm64 ./cmd/server
+          
+          # macOS AMD64
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" -o dist/1103-oss-darwin-amd64 ./cmd/server
+          
+          # macOS ARM64 (Apple Silicon)
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" -o dist/1103-oss-darwin-arm64 ./cmd/server
+          
+          # Windows AMD64
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" -o dist/1103-oss-windows-amd64.exe ./cmd/server
+
+      - name: Create checksums
+        run: |
+          cd dist
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Package release files
+        run: |
+          mkdir -p release-package
+          
+          # 复制二进制文件
+          cp -r dist release-package/
+          
+          # 复制配置文件
+          cp .env.example release-package/
+          cp configs/config.yaml release-package/
+          cp -r deployments release-package/
+          
+          # 复制文档
+          cp README.md release-package/
+          cp -r scripts release-package/
+          
+          # 创建压缩包
+          tar -czf 1103-oss-${{ steps.version.outputs.VERSION }}.tar.gz -C release-package .
+          zip -r 1103-oss-${{ steps.version.outputs.VERSION }}.zip release-package
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREVIOUS_TAG=$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1) 2>/dev/null || echo "")
+          
+          if [ -z "$PREVIOUS_TAG" ]; then
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          else
+            CHANGELOG=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          fi
+          
+          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          name: Release ${{ steps.version.outputs.VERSION }}
+          name: Release v${{ steps.version.outputs.VERSION }}
           body: |
-            ## 🎉 1103-OSS ${{ steps.version.outputs.VERSION }}
+            ## 🚀 1103-OSS v${{ steps.version.outputs.VERSION }}
             
-            ### Docker Images
+            ### 📦 下载
             
-            **API Server:**
+            #### Docker 部署（推荐）
+            
             ```bash
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}:${{ steps.version.outputs.VERSION }}
+            # 使用 Docker Compose 部署
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}:v${{ steps.version.outputs.VERSION }}
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_WEB }}:v${{ steps.version.outputs.VERSION }}
             ```
             
-            **Web Console:**
-            ```bash
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_WEB }}:${{ steps.version.outputs.VERSION }}
-            ```
+            #### 二进制文件
             
-            ### Quick Start
+            | 平台 | 架构 | 下载 |
+            |------|------|------|
+            | Linux | x86_64 | [1103-oss-linux-amd64](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.VERSION }}/1103-oss-linux-amd64) |
+            | Linux | ARM64 | [1103-oss-linux-arm64](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.VERSION }}/1103-oss-linux-arm64) |
+            | macOS | x86_64 | [1103-oss-darwin-amd64](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.VERSION }}/1103-oss-darwin-amd64) |
+            | macOS | ARM64 | [1103-oss-darwin-arm64](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.VERSION }}/1103-oss-darwin-arm64) |
+            | Windows | x86_64 | [1103-oss-windows-amd64.exe](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.VERSION }}/1103-oss-windows-amd64.exe) |
+            
+            #### 完整包
+            
+            - [1103-oss-${{ steps.version.outputs.VERSION }}.tar.gz](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.VERSION }}/1103-oss-${{ steps.version.outputs.VERSION }}.tar.gz)
+            - [1103-oss-${{ steps.version.outputs.VERSION }}.zip](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.VERSION }}/1103-oss-${{ steps.version.outputs.VERSION }}.zip)
+            
+            ### 📝 更新日志
+            
+            ${{ steps.changelog.outputs.CHANGELOG }}
+            
+            ### 🔧 快速开始
             
             ```bash
-            # 下载 docker-compose.yml
+            # Docker Compose 部署
             wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.VERSION }}/docker-compose.yml
-            
-            # 创建 .env 配置文件
             wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.VERSION }}/.env.example -O .env
-            
-            # 启动服务
-            docker-compose up -d
+            # 编辑 .env 修改配置
+            docker compose up -d
             ```
             
-            ### Full Changelog
-            https://github.com/${{ github.repository }}/compare/v${{ steps.version.outputs.VERSION }}...HEAD
+            ### 📚 文档
+            
+            - [快速开始](https://github.com/${{ github.repository }}#快速开始)
+            - [部署指南](https://github.com/${{ github.repository }}#部署指南)
+            - [API 文档](https://github.com/${{ github.repository }}#api-文档)
+            
+            ### 🐛 问题反馈
+            
+            如遇到问题，请在 [Issues](https://github.com/${{ github.repository }}/issues) 中反馈。
           draft: false
           prerelease: false
           files: |
+            dist/1103-oss-*
+            dist/checksums.txt
+            1103-oss-${{ steps.version.outputs.VERSION }}.tar.gz
+            1103-oss-${{ steps.version.outputs.VERSION }}.zip
             deployments/docker-compose.yml
             .env.example
         env:
