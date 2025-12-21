@@ -15,11 +15,11 @@ import (
 
 // Server API 服务器
 type Server struct {
+	cfg               *config.Config
 	engine            *gin.Engine
 	s3Handler         *s3.Handler
 	migrationHandler  *MigrationHandler
 	repo              metadata.Repository
-	config            *config.Config
 }
 
 // NewServer 创建 API 服务器
@@ -191,7 +191,36 @@ func (s *Server) objectPostHandler(c *gin.Context) {
 // corsMiddleware CORS 中间件
 func (s *Server) corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
+		origin := c.Request.Header.Get("Origin")
+		
+		// 从配置中获取允许的来源
+		allowedOrigins := s.cfg.Server.AllowedOrigins
+		if len(allowedOrigins) == 0 {
+			// 如果未配置，默认允许所有来源（向后兼容）
+			allowedOrigins = []string{"*"}
+		}
+		
+		// 检查来源是否在允许列表中
+		allowed := false
+		for _, allowedOrigin := range allowedOrigins {
+			if allowedOrigin == "*" {
+				c.Header("Access-Control-Allow-Origin", "*")
+				allowed = true
+				break
+			} else if allowedOrigin == origin {
+				c.Header("Access-Control-Allow-Origin", origin)
+				c.Header("Access-Control-Allow-Credentials", "true")
+				allowed = true
+				break
+			}
+		}
+		
+		// 如果来源不在白名单中且不为空，拒绝请求
+		if !allowed && origin != "" && len(allowedOrigins) > 0 && allowedOrigins[0] != "*" {
+			c.AbortWithStatus(http.StatusForbidden)
+			return
+		}
+		
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, HEAD, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Amz-Date, X-Amz-Content-Sha256, X-Amz-Security-Token")
 		c.Header("Access-Control-Expose-Headers", "ETag, X-Amz-Request-Id")

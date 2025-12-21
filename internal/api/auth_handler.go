@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gooss/server/internal/auth"
@@ -65,7 +66,7 @@ func (s *Server) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, LoginResponse{
 		AccessKey: cred.AccessKey,
 		SecretKey: cred.SecretKey,
-		Endpoint:  "http://localhost:9000", // 可以从配置中读取
+		Endpoint:  s.cfg.Server.APIEndpoint,
 		Username:  user.Username,
 		IsAdmin:   user.IsAdmin,
 	})
@@ -309,12 +310,9 @@ func (s *Server) ChangePassword(c *gin.Context) {
 }
 
 func parseInt64(s string) int64 {
-	var result int64
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return 0
-		}
-		result = result*10 + int64(c-'0')
+	val, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0
 	}
-	return result
+	return val
 }

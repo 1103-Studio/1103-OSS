@@ -169,28 +169,7 @@ func (s *SignatureV4) verifyHeaderSignature(r *http.Request, auth *ParsedAuth, s
 	signature := s.calculateSignature(secretKey, auth.Date, auth.Region, stringToSign)
 
 	if signature != auth.Signature {
-		// 添加详细的调试信息
-		fmt.Printf("\n=== BACKEND SIGNATURE MISMATCH ===\n")
-		fmt.Printf("Expected Signature: %s\n", auth.Signature)
-		fmt.Printf("Calculated Signature: %s\n", signature)
-		fmt.Printf("Method: %s\n", r.Method)
-		fmt.Printf("Path: %s\n", r.URL.Path)
-		fmt.Printf("RawPath: %s\n", r.URL.RawPath)
-		fmt.Printf("RequestURI: %s\n", r.RequestURI)
-		fmt.Printf("Host: %s\n", r.Host)
-		fmt.Printf("SignedHeaders: %v\n", auth.SignedHeaders)
-		fmt.Printf("\nStringToSign:\n%s\n", stringToSign)
-		fmt.Printf("\nCanonicalRequest:\n%s\n", canonicalRequest)
-		
-		// 打印请求头用于调试
-		fmt.Printf("\nRequest Headers:\n")
-		for name, values := range r.Header {
-			for _, value := range values {
-				fmt.Printf("  %s: %s\n", name, value)
-			}
-		}
-		fmt.Printf("=== END DEBUG ===\n\n")
-		return fmt.Errorf("signature mismatch: expected=%s calculated=%s", auth.Signature, signature)
+		return fmt.Errorf("signature mismatch")
 	}
 
 	return nil
@@ -239,16 +218,6 @@ func (s *SignatureV4) verifyQuerySignature(r *http.Request, auth *ParsedAuth, se
 	signature := s.calculateSignature(secretKey, auth.Date, auth.Region, stringToSign)
 
 	if signature != auth.Signature {
-		fmt.Printf("\n=== QUERY SIGNATURE MISMATCH ===\n")
-		fmt.Printf("Expected Signature: %s\n", auth.Signature)
-		fmt.Printf("Calculated Signature: %s\n", signature)
-		fmt.Printf("Method: %s\n", r.Method)
-		fmt.Printf("Path: %s\n", r.URL.Path)
-		fmt.Printf("Query (without sig): %s\n", queryWithoutSig.Encode())
-		fmt.Printf("SignedHeaders: %v\n", auth.SignedHeaders)
-		fmt.Printf("\nStringToSign:\n%s\n", stringToSign)
-		fmt.Printf("\nCanonicalRequest:\n%s\n", canonicalRequest)
-		fmt.Printf("=== END DEBUG ===\n\n")
 		return fmt.Errorf("signature mismatch")
 	}
 

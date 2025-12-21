@@ -1,0 +1,442 @@
+package local
+
+import (
+	"context"
+	"crypto/md5"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"time"
+
+	"github.com/gooss/server/internal/storage"
+)
+
+// LocalStorage 本地存储引擎实现
+type LocalStorage struct {
+	basePath      string
+	multipartPath string
+}
+
+// New 创建本地存储引擎
+func New(basePath string) (*LocalStorage, error) {
+	bucketsPath := filepath.Join(basePath, "buckets")
+	multipartPath := filepath.Join(basePath, "multipart")
+
+	// 创建基础目录
+	if err := os.MkdirAll(bucketsPath, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create buckets directory: %w", err)
+	}
+	if err := os.MkdirAll(multipartPath, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create multipart directory: %w", err)
+	}
+
+	return &LocalStorage{
+		basePath:      bucketsPath,
+		multipartPath: multipartPath,
+	}, nil
+}
+
+// objectPath 获取对象存储路径
+// 防止路径遍历攻击，确保路径在 basePath 内
+func (l *LocalStorage) objectPath(bucket, key string) (string, error) {
+	// 清理路径，移除 . 和 ..
+	cleanKey := filepath.Clean(key)
+	
+	// 检查是否包含路径遍历字符
+	if strings.Contains(cleanKey, "..") {
+		return "", fmt.Errorf("invalid key: path traversal detected")
+	}
+	
+	// 检查是否为绝对路径
+	if filepath.IsAbs(cleanKey) {
+		return "", fmt.Errorf("invalid key: absolute path not allowed")
+	}
+	
+	// 构建完整路径
+	fullPath := filepath.Join(l.basePath, bucket, cleanKey)
+	
+	// 确保路径在 basePath 内（双重检查）
+	if !strings.HasPrefix(fullPath, l.basePath) {
+		return "", fmt.Errorf("invalid key: path outside base directory")
+	}
+	
+	return fullPath, nil
+}
+
+// Put 上传对象
+func (l *LocalStorage) Put(ctx context.Context, bucket, key string, reader io.Reader, size int64, contentType string) (*storage.ObjectInfo, error) {
+	objPath := l.objectPath(bucket, key)
+
+	// 创建目录
+	dir := filepath.Dir(objPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	// 创建临时文件
+	tmpFile, err := os.CreateTemp(dir, ".tmp-")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer func() {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+	}()
+
+	// 写入并计算 MD5
+	hash := md5.New()
+	writer := io.MultiWriter(tmpFile, hash)
+
+	written, err := io.Copy(writer, reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write file: %w", err)
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close temp file: %w", err)
+	}
+
+	// 重命名为目标文件
+	if err := os.Rename(tmpPath, objPath); err != nil {
+		return nil, fmt.Errorf("failed to rename file: %w", err)
+	}
+
+	etag := hex.EncodeToString(hash.Sum(nil))
+
+	return &storage.ObjectInfo{
+		Key:          key,
+		Size:         written,
+		ETag:         etag,
+		ContentType:  contentType,
+		StorageClass: "STANDARD",
+		StoragePath:  objPath,
+		LastModified: time.Now(),
+	}, nil
+}
+
+// Get 获取对象
+func (l *LocalStorage) Get(ctx context.Context, bucket, key string) (io.ReadCloser, *storage.ObjectInfo, error) {
+	objPath := l.objectPath(bucket, key)
+
+	file, err := os.Open(objPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil, fmt.Errorf("object not found: %s/%s", bucket, key)
+		}
+		return nil, nil, fmt.Errorf("failed to open file: %w", err)
+	}
+
+	stat, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, nil, fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	info := &storage.ObjectInfo{
+		Key:          key,
+		Size:         stat.Size(),
+		StoragePath:  objPath,
+		LastModified: stat.ModTime(),
+	}
+
+	return file, info, nil
+}
+
+// GetRange 范围获取对象
+func (l *LocalStorage) GetRange(ctx context.Context, bucket, key string, start, end int64) (io.ReadCloser, *storage.ObjectInfo, error) {
+	objPath, err := l.objectPath(bucket, key)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	file, err := os.Open(objPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil, fmt.Errorf("object not found: %s/%s", bucket, key)
+		}
+		return nil, nil, fmt.Errorf("failed to open file: %w", err)
+	}
+
+	stat, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, nil, fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	// 调整范围
+	if end < 0 || end >= stat.Size() {
+		end = stat.Size() - 1
+	}
+	if start < 0 {
+		start = 0
+	}
+
+	// 定位到起始位置
+	if _, err := file.Seek(start, io.SeekStart); err != nil {
+		file.Close()
+		return nil, nil, fmt.Errorf("failed to seek: %w", err)
+	}
+
+	info := &storage.ObjectInfo{
+		Key:          key,
+		Size:         end - start + 1,
+		StoragePath:  objPath,
+		LastModified: stat.ModTime(),
+	}
+
+	// 返回限制读取器
+	return &limitedReadCloser{
+		reader: io.LimitReader(file, end-start+1),
+		closer: file,
+	}, info, nil
+}
+
+type limitedReadCloser struct {
+	reader io.Reader
+	closer io.Closer
+}
+
+func (l *limitedReadCloser) Read(p []byte) (n int, err error) {
+	return l.reader.Read(p)
+}
+
+func (l *limitedReadCloser) Close() error {
+	return l.closer.Close()
+}
+
+// Delete 删除对象
+func (l *LocalStorage) Delete(ctx context.Context, bucket, key string) error {
+	objPath := l.objectPath(bucket, key)
+
+	if err := os.Remove(objPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil // 幂等删除
+		}
+		return fmt.Errorf("failed to delete file: %w", err)
+	}
+
+	// 清理空目录
+	l.cleanEmptyDirs(filepath.Dir(objPath), l.objectPath(bucket, ""))
+
+	return nil
+}
+
+// cleanEmptyDirs 清理空目录
+func (l *LocalStorage) cleanEmptyDirs(dir, stopAt string) {
+	for dir != stopAt && dir != l.basePath {
+		entries, err := os.ReadDir(dir)
+		if err != nil || len(entries) > 0 {
+			break
+		}
+		os.Remove(dir)
+		dir = filepath.Dir(dir)
+	}
+}
+
+// Stat 获取对象信息
+func (l *LocalStorage) Stat(ctx context.Context, bucket, key string) (*storage.ObjectInfo, error) {
+	objPath := l.objectPath(bucket, key)
+
+	stat, err := os.Stat(objPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("object not found: %s/%s", bucket, key)
+		}
+		return nil, fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	return &storage.ObjectInfo{
+		Key:          key,
+		Size:         stat.Size(),
+		StoragePath:  objPath,
+		LastModified: stat.ModTime(),
+	}, nil
+}
+
+// Exists 检查对象是否存在
+func (l *LocalStorage) Exists(ctx context.Context, bucket, key string) (bool, error) {
+	objPath := l.objectPath(bucket, key)
+	_, err := os.Stat(objPath)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+// Copy 复制对象
+func (l *LocalStorage) Copy(ctx context.Context, srcBucket, srcKey, dstBucket, dstKey string) (*storage.ObjectInfo, error) {
+	srcPath := l.objectPath(srcBucket, srcKey)
+	dstPath := l.objectPath(dstBucket, dstKey)
+
+	// 打开源文件
+	srcFile, err := os.Open(srcPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open source: %w", err)
+	}
+	defer srcFile.Close()
+
+	// 创建目标目录
+	if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+		return nil, fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	// 创建目标文件
+	dstFile, err := os.Create(dstPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create destination: %w", err)
+	}
+	defer dstFile.Close()
+
+	// 复制并计算 MD5
+	hash := md5.New()
+	writer := io.MultiWriter(dstFile, hash)
+
+	written, err := io.Copy(writer, srcFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to copy: %w", err)
+	}
+
+	etag := hex.EncodeToString(hash.Sum(nil))
+
+	return &storage.ObjectInfo{
+		Key:          dstKey,
+		Size:         written,
+		ETag:         etag,
+		StoragePath:  dstPath,
+		LastModified: time.Now(),
+	}, nil
+}
+
+// CreateBucket 创建 Bucket 目录
+func (l *LocalStorage) CreateBucket(ctx context.Context, bucket string) error {
+	bucketPath := filepath.Join(l.basePath, bucket)
+	return os.MkdirAll(bucketPath, 0755)
+}
+
+// DeleteBucket 删除 Bucket 目录
+func (l *LocalStorage) DeleteBucket(ctx context.Context, bucket string) error {
+	bucketPath := filepath.Join(l.basePath, bucket)
+
+	// 检查是否为空
+	entries, err := os.ReadDir(bucketPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if len(entries) > 0 {
+		return fmt.Errorf("bucket not empty")
+	}
+
+	return os.Remove(bucketPath)
+}
+
+// BucketExists 检查 Bucket 是否存在
+func (l *LocalStorage) BucketExists(ctx context.Context, bucket string) (bool, error) {
+	bucketPath := filepath.Join(l.basePath, bucket)
+	stat, err := os.Stat(bucketPath)
+	if err == nil {
+		return stat.IsDir(), nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+// InitMultipartUpload 初始化分片上传
+func (l *LocalStorage) InitMultipartUpload(ctx context.Context, bucket, key, uploadID string) error {
+	uploadPath := filepath.Join(l.multipartPath, uploadID)
+	return os.MkdirAll(uploadPath, 0755)
+}
+
+// PutPart 上传分片
+func (l *LocalStorage) PutPart(ctx context.Context, bucket, key, uploadID string, partNumber int, reader io.Reader, size int64) (string, error) {
+	partPath := filepath.Join(l.multipartPath, uploadID, fmt.Sprintf("part.%d", partNumber))
+
+	file, err := os.Create(partPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to create part file: %w", err)
+	}
+	defer file.Close()
+
+	hash := md5.New()
+	writer := io.MultiWriter(file, hash)
+
+	if _, err := io.Copy(writer, reader); err != nil {
+		return "", fmt.Errorf("failed to write part: %w", err)
+	}
+
+	etag := hex.EncodeToString(hash.Sum(nil))
+	return etag, nil
+}
+
+// CompleteParts 合并分片
+func (l *LocalStorage) CompleteParts(ctx context.Context, bucket, key, uploadID string, parts []storage.PartInfo) (*storage.ObjectInfo, error) {
+	uploadPath := filepath.Join(l.multipartPath, uploadID)
+	objPath := l.objectPath(bucket, key)
+
+	// 创建目标目录
+	if err := os.MkdirAll(filepath.Dir(objPath), 0755); err != nil {
+		return nil, fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	// 创建目标文件
+	dstFile, err := os.Create(objPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create destination: %w", err)
+	}
+	defer dstFile.Close()
+
+	// 按分片号排序
+	sort.Slice(parts, func(i, j int) bool {
+		return parts[i].PartNumber < parts[j].PartNumber
+	})
+
+	hash := md5.New()
+	writer := io.MultiWriter(dstFile, hash)
+	var totalSize int64
+
+	// 合并分片
+	for _, part := range parts {
+		partPath := filepath.Join(uploadPath, fmt.Sprintf("part.%d", part.PartNumber))
+		partFile, err := os.Open(partPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open part %d: %w", part.PartNumber, err)
+		}
+
+		written, err := io.Copy(writer, partFile)
+		partFile.Close()
+		if err != nil {
+			return nil, fmt.Errorf("failed to copy part %d: %w", part.PartNumber, err)
+		}
+		totalSize += written
+	}
+
+	// 清理分片目录
+	os.RemoveAll(uploadPath)
+
+	etag := hex.EncodeToString(hash.Sum(nil))
+
+	return &storage.ObjectInfo{
+		Key:          key,
+		Size:         totalSize,
+		ETag:         etag,
+		StoragePath:  objPath,
+		LastModified: time.Now(),
+	}, nil
+}
+
+// AbortMultipartUpload 取消分片上传
+func (l *LocalStorage) AbortMultipartUpload(ctx context.Context, bucket, key, uploadID string) error {
+	uploadPath := filepath.Join(l.multipartPath, uploadID)
+	return os.RemoveAll(uploadPath)
+}

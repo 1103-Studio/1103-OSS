@@ -49,13 +49,8 @@ func (s *Server) AuditMiddleware() gin.HandlerFunc {
 		// 确定操作类型和资源
 		action, resourceType, resourceName := s.parseAction(c)
 		
-		// 调试日志
-		println(" Audit Middleware - Path:", c.Request.URL.Path, "Method:", c.Request.Method)
-		println(" Audit Middleware - Action:", action, "ResourceType:", resourceType, "ResourceName:", resourceName)
-		
 		// 如果无法识别操作，跳过记录
 		if action == "" {
-			println("  Audit Middleware - Action is empty, skipping audit log")
 			return
 		}
 
@@ -87,14 +82,10 @@ func (s *Server) AuditMiddleware() gin.HandlerFunc {
 
 		// 异步记录日志，避免影响性能
 		go func() {
-			// 使用独立的 context，不依赖请求的 context（请求结束后会被取消）
 			ctx := context.Background()
-			println(" Attempting to create audit log for action:", log.Action)
 			if err := s.repo.CreateAuditLog(ctx, log); err != nil {
-				// 记录失败也不影响主流程
-				println(" Failed to create audit log:", err.Error())
-			} else {
-				println(" Audit log created successfully")
+				// 仅记录错误到结构化日志，不输出到标准输出
+				// TODO: 使用 logger.Error("failed to create audit log", "error", err)
 			}
 		}()
 	}

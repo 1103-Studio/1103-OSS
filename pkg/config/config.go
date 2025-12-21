@@ -18,9 +18,11 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Host      string `mapstructure:"host"`
-	Port      int    `mapstructure:"port"`
-	AdminPort int    `mapstructure:"admin_port"`
+	Host           string   `mapstructure:"host"`
+	Port           int      `mapstructure:"port"`
+	AdminPort      int      `mapstructure:"admin_port"`
+	AllowedOrigins []string `mapstructure:"allowed_origins"`
+	APIEndpoint    string   `mapstructure:"api_endpoint"`
 }
 
 type StorageConfig struct {
