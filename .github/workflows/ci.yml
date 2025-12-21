@@ -105,9 +105,19 @@ jobs:
           format: 'sarif'
           output: 'trivy-results.sarif'
 
-      - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+      # 保存扫描结果为 artifact（不需要 Advanced Security）
+      - name: Upload Trivy results as artifact
+        uses: actions/upload-artifact@v4
         if: always()
-        continue-on-error: true  # 如果 Advanced Security 未启用则跳过
         with:
-          sarif_file: 'trivy-results.sarif'
+          name: trivy-results
+          path: trivy-results.sarif
+          retention-days: 30
+      
+      # 仅在启用 Advanced Security 时上传到 GitHub Security
+      # 如果仓库启用了 Advanced Security，取消下面的注释
+      # - name: Upload Trivy results to GitHub Security
+      #   uses: github/codeql-action/upload-sarif@v4
+      #   if: always()
+      #   with:
+      #     sarif_file: 'trivy-results.sarif'
