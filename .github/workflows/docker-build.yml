@@ -169,13 +169,11 @@ jobs:
           cp -r dist release-package/
           
           # 复制配置文件
-          cp .env.example release-package/
-          cp configs/config.yaml release-package/
+          cp deployments/.env.example release-package/
           cp -r deployments release-package/
           
           # 复制文档
           cp README.md release-package/
-          cp -r scripts release-package/
           
           # 创建压缩包
           tar -czf 1103-oss-${{ steps.version.outputs.VERSION }}.tar.gz -C release-package .
@@ -259,6 +257,6 @@ jobs:
             1103-oss-${{ steps.version.outputs.VERSION }}.tar.gz
             1103-oss-${{ steps.version.outputs.VERSION }}.zip
             deployments/docker-compose.yml
-            .env.example
+            deployments/.env.example
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
