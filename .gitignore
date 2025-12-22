@@ -32,5 +32,8 @@ vendor/
 web/node_modules/
 web/dist/
 
+# MkDocs
+site/
+
 # Logs
 *.log
