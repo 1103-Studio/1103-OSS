@@ -244,19 +244,21 @@ make clean
 
 ## 部署指南
 
-### 生产环境部署
+提供两种生产环境部署方案，根据你的需求选择：
 
-生产模式使用优化的镜像，适合部署到生产环境。
+### 方案一：使用 Make 命令部署（源码部署）
+
+适合需要自定义构建或二次开发的场景。
 
 #### 1. 准备环境
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-org/1103-OSS.git
+git clone https://github.com/1103-Studio/1103-OSS.git
 cd 1103-OSS
 
-# 创建生产配置
-cp .env.example deployments/.env
+# 创建配置文件
+cp deployments/.env.example deployments/.env
 ```
 
 #### 2. 配置环境变量
@@ -276,10 +278,10 @@ INIT_ACCESS_KEY=
 INIT_ACCESS_SECRET=
 ```
 
-#### 3. 启动生产环境
+#### 3. 启动服务
 
 ```bash
-# 启动所有服务
+# 构建并启动所有服务
 make prod
 
 # 查看服务状态
@@ -289,9 +291,148 @@ make status
 make prod-logs
 ```
 
-**生产环境访问地址：**
+**访问地址：**
 - 🌐 **Web 控制台**: http://localhost:9002
 - 🔌 **S3 API 端点**: http://localhost:9000
+
+---
+
+### 方案二：使用 Docker 镜像部署（推荐）
+
+**无需克隆代码，直接拉取镜像快速部署。**
+
+#### 1. 创建部署目录
+
+```bash
+# 创建项目目录
+mkdir -p ~/1103-oss-deploy
+cd ~/1103-oss-deploy
+```
+
+#### 2. 下载配置文件
+
+```bash
+# 下载 docker-compose.yml
+curl -O https://raw.githubusercontent.com/1103-Studio/1103-OSS/main/deployments/docker-compose.yml
+
+# 下载环境变量模板
+curl -o .env https://raw.githubusercontent.com/1103-Studio/1103-OSS/main/deployments/.env.example
+```
+
+或者从 GitHub Release 下载：
+
+```bash
+# 下载最新版本配置文件
+VERSION="v1.4.0"
+wget https://github.com/1103-Studio/1103-OSS/releases/download/${VERSION}/docker-compose.yml
+wget https://github.com/1103-Studio/1103-OSS/releases/download/${VERSION}/.env.example -O .env
+```
+
+#### 3. 修改环境变量
+
+编辑 `.env` 文件，**必须修改**以下配置：
+
+```bash
+# 数据库配置
+DB_NAME=oss
+DB_USER=oss
+DB_PASSWORD=your_strong_db_password_here    # ⚠️ 必须修改
+
+# 管理员账号配置
+ROOT_USER=admin                              # 管理员用户名
+ROOT_PASSWORD=your_strong_admin_password     # ⚠️ 必须修改
+
+# S3 访问密钥（可选，留空自动生成）
+INIT_ACCESS_KEY=                             # 留空自动生成
+INIT_ACCESS_SECRET=                          # 留空自动生成
+
+# API 服务配置（可选）
+API_HOST=0.0.0.0
+API_PORT=9000
+WEB_PORT=9002
+
+# 存储配置
+STORAGE_BASE_PATH=/data/oss
+```
+
+**环境变量说明：**
+
+| 变量名 | 说明 | 默认值 | 是否必改 |
+|--------|------|--------|----------|
+| `DB_PASSWORD` | 数据库密码 | `oss_password` | ✅ 必须 |
+| `ROOT_USER` | 管理员用户名 | `admin` | 建议修改 |
+| `ROOT_PASSWORD` | 管理员密码 | `admin123` | ✅ 必须 |
+| `INIT_ACCESS_KEY` | 初始 S3 Access Key | 自动生成 | 可选 |
+| `INIT_ACCESS_SECRET` | 初始 S3 Secret Key | 自动生成 | 可选 |
+| `API_PORT` | API 服务端口 | `9000` | 可选 |
+| `WEB_PORT` | Web 控制台端口 | `9002` | 可选 |
+| `STORAGE_BASE_PATH` | 对象存储路径 | `/data/oss` | 可选 |
+
+#### 4. 修改 docker-compose.yml（使用远程镜像）
+
+编辑 `docker-compose.yml`，修改镜像地址为 ghcr.io：
+
+```yaml
+services:
+  gooss-api:
+    image: ghcr.io/1103-studio/1103-oss-api:v1.4.0  # 或使用 :latest
+    # ... 其他配置保持不变
+    
+  gooss-web:
+    image: ghcr.io/1103-studio/1103-oss-web:v1.4.0  # 或使用 :latest
+    # ... 其他配置保持不变
+```
+
+#### 5. 拉取镜像并启动
+
+```bash
+# 拉取最新镜像
+docker pull ghcr.io/1103-studio/1103-oss-api:v1.4.0
+docker pull ghcr.io/1103-studio/1103-oss-web:v1.4.0
+
+# 启动所有服务
+docker compose up -d
+
+# 查看服务状态
+docker compose ps
+
+# 查看日志
+docker compose logs -f
+```
+
+**访问地址：**
+- 🌐 **Web 控制台**: http://localhost:9002
+- 🔌 **S3 API 端点**: http://localhost:9000
+
+#### 6. 查看生成的 S3 凭证
+
+```bash
+# 查看 API 日志中的自动生成凭证
+docker compose logs gooss-api | grep "Access Key"
+
+# 或登录 Web 控制台查看
+# 访问 http://localhost:9002 使用管理员账号登录
+```
+
+#### 7. 服务管理
+
+```bash
+# 停止服务（保留数据）
+docker compose down
+
+# 停止服务并删除数据（谨慎！）
+docker compose down -v
+
+# 重启服务
+docker compose restart
+
+# 更新到最新版本
+docker compose pull
+docker compose up -d
+
+# 查看实时日志
+docker compose logs -f gooss-api gooss-web
+```
 
 #### 4. 配置反向代理（推荐）
 
