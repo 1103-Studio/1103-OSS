@@ -9,7 +9,7 @@
 [![React](https://img.shields.io/badge/React-18.2-61DAFB?logo=react)](https://react.dev/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](https://www.docker.com/)
 
-[English](README.md) | [中文文档](README_CN.md)
+[English](https://oss-docs.spark-ai.top/) | [中文文档](https://oss-docs.spark-ai.top/)
 
 </div>
 
