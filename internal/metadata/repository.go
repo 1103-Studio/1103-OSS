@@ -10,9 +10,12 @@ type User struct {
 	ID           int64
 	Username     string
 	PasswordHash string
+	DisplayName  string
 	Email        string
 	Status       string
 	IsAdmin      bool
+	Roles        []Role
+	Permissions  []string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -31,14 +34,75 @@ type Credential struct {
 
 // Bucket 存储桶
 type Bucket struct {
-	ID            int64
-	Name          string
-	OwnerID       int64
-	Region        string
-	ACL           string
-	Versioning    bool
-	DefaultExpiry string // 预签名URL默认过期时间，如 "7d", "4w", "2h30m"
-	CreatedAt     time.Time
+	ID               int64
+	Name             string
+	OwnerID          int64
+	Region           string
+	ACL              string
+	Versioning       bool
+	DefaultExpiry    string // 预签名URL默认过期时间，如 "7d", "4w", "2h30m"
+	MaxSizeBytes     int64
+	MaxTrafficBytes  int64
+	UsedTrafficBytes int64
+	MaxObjects       int64
+	CreatedAt        time.Time
+}
+
+type Role struct {
+	ID          int64
+	Name        string
+	Description string
+	Permissions []string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type BucketAccess struct {
+	ID         int64
+	BucketID   int64
+	UserID     int64
+	Permission string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+type Ticket struct {
+	ID          int64
+	RequesterID int64
+	AssigneeID  *int64
+	Title       string
+	Description string
+	Category    string
+	Priority    string
+	Status      string
+	BucketID    *int64
+	BucketName  string
+	Requester   string
+	Assignee    string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	ResolvedAt  *time.Time
+}
+
+type TicketMessage struct {
+	ID         int64
+	TicketID   int64
+	AuthorID   int64
+	Author     string
+	Message    string
+	IsInternal bool
+	CreatedAt  time.Time
+}
+
+type TicketFilter struct {
+	RequesterID *int64
+	AssigneeID  *int64
+	Status      string
+	Category    string
+	Priority    string
+	Limit       int
+	Offset      int
+	IncludeAll  bool
 }
 
 // Object 对象
@@ -108,11 +172,16 @@ type Repository interface {
 	UpdateUser(ctx context.Context, user *User) error
 	DeleteUser(ctx context.Context, id int64) error
 	ListUsers(ctx context.Context) ([]User, error)
+	GetUserPermissions(ctx context.Context, userID int64) ([]string, error)
+	SetUserRoles(ctx context.Context, userID int64, roleIDs []int64) error
+	ListUserRoles(ctx context.Context, userID int64) ([]Role, error)
 
 	// Credential 操作
 	CreateCredential(ctx context.Context, cred *Credential) error
+	GetCredentialByID(ctx context.Context, id int64) (*Credential, error)
 	GetCredentialByAccessKey(ctx context.Context, accessKey string) (*Credential, error)
 	GetCredentialsByUserID(ctx context.Context, userID int64) ([]Credential, error)
+	UpdateCredential(ctx context.Context, cred *Credential) error
 	DeleteCredential(ctx context.Context, id int64) error
 
 	// Bucket 操作
@@ -120,9 +189,25 @@ type Repository interface {
 	GetBucketByName(ctx context.Context, name string) (*Bucket, error)
 	GetBucketByID(ctx context.Context, id int64) (*Bucket, error)
 	ListBuckets(ctx context.Context, ownerID int64) ([]Bucket, error)
+	ListAccessibleBuckets(ctx context.Context, userID int64) ([]Bucket, error)
 	ListAllBuckets(ctx context.Context) ([]Bucket, error)
 	UpdateBucket(ctx context.Context, bucket *Bucket) error
+	IncrementBucketTraffic(ctx context.Context, bucketID int64, delta int64) error
 	DeleteBucket(ctx context.Context, id int64) error
+
+	// Bucket 授权操作
+	GetBucketAccess(ctx context.Context, bucketID, userID int64) (*BucketAccess, error)
+	ListBucketAccess(ctx context.Context, bucketID int64) ([]BucketAccess, error)
+	UpsertBucketAccess(ctx context.Context, access *BucketAccess) error
+	DeleteBucketAccess(ctx context.Context, bucketID, userID int64) error
+
+	// Role 操作
+	CreateRole(ctx context.Context, role *Role) error
+	GetRoleByID(ctx context.Context, id int64) (*Role, error)
+	GetRoleByName(ctx context.Context, name string) (*Role, error)
+	ListRoles(ctx context.Context) ([]Role, error)
+	UpdateRole(ctx context.Context, role *Role) error
+	DeleteRole(ctx context.Context, id int64) error
 
 	// Bucket Policy 操作
 	SetBucketPolicy(ctx context.Context, bucketID int64, policy []byte) error
@@ -134,6 +219,14 @@ type Repository interface {
 	GetAuditLogs(ctx context.Context, filter *AuditLogFilter) ([]*AuditLog, error)
 	GetAuditLogStats(ctx context.Context, startTime, endTime time.Time) (map[string]interface{}, error)
 	GetRecentActions(ctx context.Context, limit int) ([]*AuditLog, error)
+
+	// Tickets
+	CreateTicket(ctx context.Context, ticket *Ticket) error
+	GetTicketByID(ctx context.Context, id int64) (*Ticket, error)
+	ListTickets(ctx context.Context, filter *TicketFilter) ([]*Ticket, error)
+	UpdateTicket(ctx context.Context, ticket *Ticket) error
+	CreateTicketMessage(ctx context.Context, message *TicketMessage) error
+	ListTicketMessages(ctx context.Context, ticketID int64, includeInternal bool) ([]*TicketMessage, error)
 
 	// Object 操作
 	CreateObject(ctx context.Context, obj *Object) error

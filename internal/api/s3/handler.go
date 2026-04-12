@@ -38,7 +38,7 @@ func NewHandler(storage storage.Engine, repo metadata.Repository, region string)
 func (h *Handler) ListBuckets(c *gin.Context) {
 	userID := c.GetInt64("user_id")
 
-	buckets, err := h.repo.ListBuckets(c.Request.Context(), userID)
+	buckets, err := h.repo.ListAccessibleBuckets(c.Request.Context(), userID)
 	if err != nil {
 		h.sendError(c, http.StatusInternalServerError, response.ErrInternalError, err.Error())
 		return
@@ -96,10 +96,11 @@ func (h *Handler) CreateBucket(c *gin.Context) {
 
 	// 创建元数据
 	bucket := &metadata.Bucket{
-		Name:    bucketName,
-		OwnerID: userID,
-		Region:  h.region,
-		ACL:     "private",
+		Name:          bucketName,
+		OwnerID:       userID,
+		Region:        h.region,
+		ACL:           "private",
+		DefaultExpiry: "7d",
 	}
 	if err := h.repo.CreateBucket(c.Request.Context(), bucket); err != nil {
 		_ = h.storage.DeleteBucket(c.Request.Context(), bucketName)
@@ -281,6 +282,10 @@ func (h *Handler) PutObject(c *gin.Context) {
 		return
 	}
 
+	if !h.checkBucketQuota(c, bucket, c.Request.ContentLength) {
+		return
+	}
+
 	// 获取 Content-Type
 	contentType := c.GetHeader("Content-Type")
 	if contentType == "" {
@@ -319,6 +324,9 @@ func (h *Handler) PutObject(c *gin.Context) {
 		_ = h.storage.Delete(c.Request.Context(), bucketName, key)
 		h.sendError(c, http.StatusInternalServerError, response.ErrInternalError, err.Error())
 		return
+	}
+	if objInfo.Size > 0 {
+		_ = h.repo.IncrementBucketTraffic(c.Request.Context(), bucket.ID, objInfo.Size)
 	}
 
 	c.Header("ETag", fmt.Sprintf("\"%s\"", objInfo.ETag))
@@ -389,7 +397,9 @@ func (h *Handler) GetObject(c *gin.Context) {
 	c.Header("Accept-Ranges", "bytes")
 
 	c.Status(http.StatusOK)
-	io.Copy(c.Writer, reader)
+	if written, err := io.Copy(c.Writer, reader); err == nil && written > 0 {
+		_ = h.repo.IncrementBucketTraffic(c.Request.Context(), bucket.ID, written)
+	}
 }
 
 func (h *Handler) handleRangeRequest(c *gin.Context, bucket, key string, obj *metadata.Object, rangeHeader string) {
@@ -442,7 +452,9 @@ func (h *Handler) handleRangeRequest(c *gin.Context, bucket, key string, obj *me
 	c.Header("Accept-Ranges", "bytes")
 
 	c.Status(http.StatusPartialContent)
-	io.Copy(c.Writer, reader)
+	if written, err := io.Copy(c.Writer, reader); err == nil && written > 0 {
+		_ = h.repo.IncrementBucketTraffic(c.Request.Context(), obj.BucketID, written)
+	}
 }
 
 // HeadObject HEAD /{bucket}/{key} - 获取对象元数据
@@ -490,6 +502,9 @@ func (h *Handler) HeadObject(c *gin.Context) {
 	c.Header("ETag", fmt.Sprintf("\"%s\"", obj.ETag))
 	c.Header("Last-Modified", obj.UpdatedAt.UTC().Format(http.TimeFormat))
 	c.Header("Accept-Ranges", "bytes")
+	if obj.Size > 0 {
+		_ = h.repo.IncrementBucketTraffic(c.Request.Context(), bucket.ID, obj.Size)
+	}
 	c.Status(http.StatusOK)
 }
 
@@ -567,6 +582,9 @@ func (h *Handler) CopyObject(c *gin.Context) {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchKey, "Source object not found")
 		return
 	}
+	if !h.checkBucketQuota(c, dstBucketMeta, srcObj.Size) {
+		return
+	}
 
 	// 复制存储
 	objInfo, err := h.storage.Copy(c.Request.Context(), srcBucket, srcKey, dstBucket, dstKey)
@@ -590,6 +608,9 @@ func (h *Handler) CopyObject(c *gin.Context) {
 		h.sendError(c, http.StatusInternalServerError, response.ErrInternalError, err.Error())
 		return
 	}
+	if objInfo.Size > 0 {
+		_ = h.repo.IncrementBucketTraffic(c.Request.Context(), dstBucketMeta.ID, objInfo.Size)
+	}
 
 	result := response.CopyObjectResult{
 		LastModified: response.FormatTime(objInfo.LastModified),
@@ -612,6 +633,9 @@ func (h *Handler) CreateMultipartUpload(c *gin.Context) {
 		return
 	}
 	if !h.requireBucketOwner(c, bucket) {
+		return
+	}
+	if !h.checkBucketQuota(c, bucket, c.Request.ContentLength) {
 		return
 	}
 
@@ -692,6 +716,9 @@ func (h *Handler) UploadPart(c *gin.Context) {
 		h.sendError(c, http.StatusInternalServerError, response.ErrInternalError, err.Error())
 		return
 	}
+	if c.Request.ContentLength > 0 {
+		_ = h.repo.IncrementBucketTraffic(c.Request.Context(), bucket.ID, c.Request.ContentLength)
+	}
 
 	c.Header("ETag", fmt.Sprintf("\"%s\"", etag))
 	c.Status(http.StatusOK)
@@ -733,6 +760,13 @@ func (h *Handler) CompleteMultipartUpload(c *gin.Context) {
 	dbParts, err := h.repo.GetUploadParts(c.Request.Context(), uploadID)
 	if err != nil {
 		h.sendError(c, http.StatusInternalServerError, response.ErrInternalError, err.Error())
+		return
+	}
+	var totalPartsSize int64
+	for _, part := range dbParts {
+		totalPartsSize += part.Size
+	}
+	if !h.checkBucketQuota(c, bucket, totalPartsSize) {
 		return
 	}
 

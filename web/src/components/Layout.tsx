@@ -10,7 +10,9 @@ import {
   Globe,
   Info,
   FileText,
-  Upload
+  Upload,
+  Shield,
+  LifeBuoy
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
@@ -32,12 +34,14 @@ export default function Layout({ children }: LayoutProps) {
   const navItems = [
     { name: t('dashboard'), path: '/', icon: Monitor },
     { name: t('buckets'), path: '/buckets', icon: FolderOpen },
+    { name: '工单', path: '/tickets', icon: LifeBuoy },
     { name: t('settings'), path: '/settings', icon: Settings },
     { name: t('about'), path: '/about', icon: Info },
   ]
 
   if (credentials?.isAdmin) {
     navItems.splice(2, 0,
+      { name: '访问控制', path: '/iam', icon: Shield },
       { name: '存储桶迁移', path: '/migration', icon: Upload },
       { name: 'Audit Logs', path: '/audit-logs', icon: FileText }
     )

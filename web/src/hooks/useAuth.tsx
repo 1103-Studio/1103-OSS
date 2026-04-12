@@ -7,7 +7,10 @@ interface Credentials {
   endpoint: string
   publicEndpoint?: string
   username?: string
+  displayName?: string
   isAdmin?: boolean
+  roles?: Array<{ id: number; name: string; description?: string; permissions?: string[] }>
+  permissions?: string[]
 }
 
 interface AuthContextType {

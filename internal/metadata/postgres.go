@@ -35,7 +35,13 @@ func NewPostgresRepository(dsn string) (*PostgresRepository, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	return &PostgresRepository{pool: pool}, nil
+	repo := &PostgresRepository{pool: pool}
+	if err := repo.EnsureSchema(context.Background()); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("failed to ensure schema: %w", err)
+	}
+
+	return repo, nil
 }
 
 func (r *PostgresRepository) conn(ctx context.Context) interface {
@@ -52,21 +58,22 @@ func (r *PostgresRepository) conn(ctx context.Context) interface {
 // ==================== User 操作 ====================
 
 func (r *PostgresRepository) CreateUser(ctx context.Context, user *User) error {
-	query := `INSERT INTO users (username, password_hash, email, status, is_admin, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`
+	query := `INSERT INTO users (username, password_hash, display_name, email, status, is_admin, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`
 	now := time.Now()
 	return r.conn(ctx).QueryRow(ctx, query,
-		user.Username, user.PasswordHash, user.Email, user.Status, user.IsAdmin, now, now,
+		user.Username, user.PasswordHash, user.DisplayName, user.Email, user.Status, user.IsAdmin, now, now,
 	).Scan(&user.ID)
 }
 
 func (r *PostgresRepository) GetUserByID(ctx context.Context, id int64) (*User, error) {
-	query := `SELECT id, username, password_hash, email, status, is_admin, created_at, updated_at
+	query := `SELECT id, username, password_hash, display_name, email, status, is_admin, created_at, updated_at
 		FROM users WHERE id = $1`
 	user := &User{}
+	var displayName sql.NullString
 	var email sql.NullString
 	err := r.conn(ctx).QueryRow(ctx, query, id).Scan(
-		&user.ID, &user.Username, &user.PasswordHash, &email,
+		&user.ID, &user.Username, &user.PasswordHash, &displayName, &email,
 		&user.Status, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err == pgx.ErrNoRows {
@@ -75,19 +82,25 @@ func (r *PostgresRepository) GetUserByID(ctx context.Context, id int64) (*User, 
 	if err != nil {
 		return nil, err
 	}
+	if displayName.Valid {
+		user.DisplayName = displayName.String
+	}
 	if email.Valid {
 		user.Email = email.String
 	}
+	user.Roles, _ = r.ListUserRoles(ctx, user.ID)
+	user.Permissions, _ = r.GetUserPermissions(ctx, user.ID)
 	return user, nil
 }
 
 func (r *PostgresRepository) GetUserByUsername(ctx context.Context, username string) (*User, error) {
-	query := `SELECT id, username, password_hash, email, status, is_admin, created_at, updated_at
+	query := `SELECT id, username, password_hash, display_name, email, status, is_admin, created_at, updated_at
 		FROM users WHERE username = $1`
 	user := &User{}
+	var displayName sql.NullString
 	var email sql.NullString
 	err := r.conn(ctx).QueryRow(ctx, query, username).Scan(
-		&user.ID, &user.Username, &user.PasswordHash, &email,
+		&user.ID, &user.Username, &user.PasswordHash, &displayName, &email,
 		&user.Status, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err == pgx.ErrNoRows {
@@ -96,14 +109,19 @@ func (r *PostgresRepository) GetUserByUsername(ctx context.Context, username str
 	if email.Valid {
 		user.Email = email.String
 	}
+	if displayName.Valid {
+		user.DisplayName = displayName.String
+	}
+	user.Roles, _ = r.ListUserRoles(ctx, user.ID)
+	user.Permissions, _ = r.GetUserPermissions(ctx, user.ID)
 	return user, err
 }
 
 func (r *PostgresRepository) UpdateUser(ctx context.Context, user *User) error {
-	query := `UPDATE users SET username = $1, password_hash = $2, email = $3, 
-		status = $4, is_admin = $5, updated_at = $6 WHERE id = $7`
+	query := `UPDATE users SET username = $1, password_hash = $2, display_name = $3, email = $4, 
+		status = $5, is_admin = $6, updated_at = $7 WHERE id = $8`
 	_, err := r.conn(ctx).Exec(ctx, query,
-		user.Username, user.PasswordHash, user.Email,
+		user.Username, user.PasswordHash, user.DisplayName, user.Email,
 		user.Status, user.IsAdmin, time.Now(), user.ID,
 	)
 	return err
@@ -115,7 +133,7 @@ func (r *PostgresRepository) DeleteUser(ctx context.Context, id int64) error {
 }
 
 func (r *PostgresRepository) ListUsers(ctx context.Context) ([]User, error) {
-	query := `SELECT id, username, password_hash, email, status, is_admin, created_at, updated_at
+	query := `SELECT id, username, password_hash, display_name, email, status, is_admin, created_at, updated_at
 		FROM users ORDER BY id`
 	rows, err := r.conn(ctx).Query(ctx, query)
 	if err != nil {
@@ -126,17 +144,96 @@ func (r *PostgresRepository) ListUsers(ctx context.Context) ([]User, error) {
 	var users []User
 	for rows.Next() {
 		var user User
+		var displayName sql.NullString
 		var email sql.NullString
-		if err := rows.Scan(&user.ID, &user.Username, &user.PasswordHash, &email,
+		if err := rows.Scan(&user.ID, &user.Username, &user.PasswordHash, &displayName, &email,
 			&user.Status, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if displayName.Valid {
+			user.DisplayName = displayName.String
 		}
 		if email.Valid {
 			user.Email = email.String
 		}
+		user.Roles, _ = r.ListUserRoles(ctx, user.ID)
+		user.Permissions, _ = r.GetUserPermissions(ctx, user.ID)
 		users = append(users, user)
 	}
 	return users, nil
+}
+
+func (r *PostgresRepository) GetUserPermissions(ctx context.Context, userID int64) ([]string, error) {
+	var isAdmin bool
+	err := r.conn(ctx).QueryRow(ctx, `SELECT is_admin FROM users WHERE id = $1`, userID).Scan(&isAdmin)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if isAdmin {
+		return []string{"*"}, nil
+	}
+
+	rows, err := r.conn(ctx).Query(ctx, `
+		SELECT DISTINCT jsonb_array_elements_text(r.permissions)
+		FROM user_roles ur
+		JOIN roles r ON r.id = ur.role_id
+		WHERE ur.user_id = $1
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	permissions := make([]string, 0)
+	for rows.Next() {
+		var permission string
+		if err := rows.Scan(&permission); err != nil {
+			return nil, err
+		}
+		permissions = append(permissions, permission)
+	}
+	return permissions, rows.Err()
+}
+
+func (r *PostgresRepository) SetUserRoles(ctx context.Context, userID int64, roleIDs []int64) error {
+	if _, err := r.conn(ctx).Exec(ctx, `DELETE FROM user_roles WHERE user_id = $1`, userID); err != nil {
+		return err
+	}
+	for _, roleID := range roleIDs {
+		if _, err := r.conn(ctx).Exec(ctx, `INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)`, userID, roleID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *PostgresRepository) ListUserRoles(ctx context.Context, userID int64) ([]Role, error) {
+	rows, err := r.conn(ctx).Query(ctx, `
+		SELECT r.id, r.name, r.description, r.permissions, r.created_at, r.updated_at
+		FROM user_roles ur
+		JOIN roles r ON r.id = ur.role_id
+		WHERE ur.user_id = $1
+		ORDER BY r.name
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var roles []Role
+	for rows.Next() {
+		var role Role
+		var permissionsJSON []byte
+		if err := rows.Scan(&role.ID, &role.Name, &role.Description, &permissionsJSON, &role.CreatedAt, &role.UpdatedAt); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal(permissionsJSON, &role.Permissions)
+		roles = append(roles, role)
+	}
+	return roles, rows.Err()
 }
 
 // ==================== Credential 操作 ====================
@@ -147,6 +244,31 @@ func (r *PostgresRepository) CreateCredential(ctx context.Context, cred *Credent
 	return r.conn(ctx).QueryRow(ctx, query,
 		cred.UserID, cred.AccessKey, cred.SecretKey, cred.Description, cred.Status, time.Now(), cred.ExpiresAt,
 	).Scan(&cred.ID)
+}
+
+func (r *PostgresRepository) GetCredentialByID(ctx context.Context, id int64) (*Credential, error) {
+	query := `SELECT id, user_id, access_key, secret_key, description, status, created_at, expires_at
+		FROM credentials WHERE id = $1`
+	cred := &Credential{}
+	var desc sql.NullString
+	var expiresAt sql.NullTime
+	err := r.conn(ctx).QueryRow(ctx, query, id).Scan(
+		&cred.ID, &cred.UserID, &cred.AccessKey, &cred.SecretKey, &desc,
+		&cred.Status, &cred.CreatedAt, &expiresAt,
+	)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if desc.Valid {
+		cred.Description = desc.String
+	}
+	if expiresAt.Valid {
+		cred.ExpiresAt = &expiresAt.Time
+	}
+	return cred, nil
 }
 
 func (r *PostgresRepository) GetCredentialByAccessKey(ctx context.Context, accessKey string) (*Credential, error) {
@@ -200,6 +322,15 @@ func (r *PostgresRepository) GetCredentialsByUserID(ctx context.Context, userID 
 	return creds, nil
 }
 
+func (r *PostgresRepository) UpdateCredential(ctx context.Context, cred *Credential) error {
+	_, err := r.conn(ctx).Exec(ctx, `
+		UPDATE credentials
+		SET access_key = $1, secret_key = $2, description = $3, status = $4, expires_at = $5
+		WHERE id = $6
+	`, cred.AccessKey, cred.SecretKey, cred.Description, cred.Status, cred.ExpiresAt, cred.ID)
+	return err
+}
+
 func (r *PostgresRepository) DeleteCredential(ctx context.Context, id int64) error {
 	_, err := r.conn(ctx).Exec(ctx, `DELETE FROM credentials WHERE id = $1`, id)
 	return err
@@ -208,19 +339,19 @@ func (r *PostgresRepository) DeleteCredential(ctx context.Context, id int64) err
 // ==================== Bucket 操作 ====================
 
 func (r *PostgresRepository) CreateBucket(ctx context.Context, bucket *Bucket) error {
-	query := `INSERT INTO buckets (name, owner_id, region, acl, versioning, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`
+	query := `INSERT INTO buckets (name, owner_id, region, acl, versioning, default_expiry, max_size_bytes, max_traffic_bytes, used_traffic_bytes, max_objects, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`
 	return r.conn(ctx).QueryRow(ctx, query,
-		bucket.Name, bucket.OwnerID, bucket.Region, bucket.ACL, bucket.Versioning, time.Now(),
+		bucket.Name, bucket.OwnerID, bucket.Region, bucket.ACL, bucket.Versioning, bucket.DefaultExpiry, bucket.MaxSizeBytes, bucket.MaxTrafficBytes, bucket.UsedTrafficBytes, bucket.MaxObjects, time.Now(),
 	).Scan(&bucket.ID)
 }
 
 func (r *PostgresRepository) GetBucketByName(ctx context.Context, name string) (*Bucket, error) {
-	query := `SELECT id, name, owner_id, region, acl, versioning, default_expiry, created_at FROM buckets WHERE name = $1`
+	query := `SELECT id, name, owner_id, region, acl, versioning, default_expiry, max_size_bytes, max_traffic_bytes, used_traffic_bytes, max_objects, created_at FROM buckets WHERE name = $1`
 	bucket := &Bucket{}
 	err := r.conn(ctx).QueryRow(ctx, query, name).Scan(
 		&bucket.ID, &bucket.Name, &bucket.OwnerID, &bucket.Region,
-		&bucket.ACL, &bucket.Versioning, &bucket.DefaultExpiry, &bucket.CreatedAt,
+		&bucket.ACL, &bucket.Versioning, &bucket.DefaultExpiry, &bucket.MaxSizeBytes, &bucket.MaxTrafficBytes, &bucket.UsedTrafficBytes, &bucket.MaxObjects, &bucket.CreatedAt,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, nil
@@ -229,11 +360,11 @@ func (r *PostgresRepository) GetBucketByName(ctx context.Context, name string) (
 }
 
 func (r *PostgresRepository) GetBucketByID(ctx context.Context, id int64) (*Bucket, error) {
-	query := `SELECT id, name, owner_id, region, acl, versioning, default_expiry, created_at FROM buckets WHERE id = $1`
+	query := `SELECT id, name, owner_id, region, acl, versioning, default_expiry, max_size_bytes, max_traffic_bytes, used_traffic_bytes, max_objects, created_at FROM buckets WHERE id = $1`
 	bucket := &Bucket{}
 	err := r.conn(ctx).QueryRow(ctx, query, id).Scan(
 		&bucket.ID, &bucket.Name, &bucket.OwnerID, &bucket.Region,
-		&bucket.ACL, &bucket.Versioning, &bucket.DefaultExpiry, &bucket.CreatedAt,
+		&bucket.ACL, &bucket.Versioning, &bucket.DefaultExpiry, &bucket.MaxSizeBytes, &bucket.MaxTrafficBytes, &bucket.UsedTrafficBytes, &bucket.MaxObjects, &bucket.CreatedAt,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, nil
@@ -242,7 +373,7 @@ func (r *PostgresRepository) GetBucketByID(ctx context.Context, id int64) (*Buck
 }
 
 func (r *PostgresRepository) ListBuckets(ctx context.Context, ownerID int64) ([]Bucket, error) {
-	query := `SELECT id, name, owner_id, region, acl, versioning, default_expiry, created_at FROM buckets WHERE owner_id = $1 ORDER BY name`
+	query := `SELECT id, name, owner_id, region, acl, versioning, default_expiry, max_size_bytes, max_traffic_bytes, used_traffic_bytes, max_objects, created_at FROM buckets WHERE owner_id = $1 ORDER BY name`
 	rows, err := r.conn(ctx).Query(ctx, query, ownerID)
 	if err != nil {
 		return nil, err
@@ -253,7 +384,7 @@ func (r *PostgresRepository) ListBuckets(ctx context.Context, ownerID int64) ([]
 	for rows.Next() {
 		var bucket Bucket
 		if err := rows.Scan(&bucket.ID, &bucket.Name, &bucket.OwnerID, &bucket.Region,
-			&bucket.ACL, &bucket.Versioning, &bucket.DefaultExpiry, &bucket.CreatedAt); err != nil {
+			&bucket.ACL, &bucket.Versioning, &bucket.DefaultExpiry, &bucket.MaxSizeBytes, &bucket.MaxTrafficBytes, &bucket.UsedTrafficBytes, &bucket.MaxObjects, &bucket.CreatedAt); err != nil {
 			return nil, err
 		}
 		buckets = append(buckets, bucket)
@@ -261,8 +392,36 @@ func (r *PostgresRepository) ListBuckets(ctx context.Context, ownerID int64) ([]
 	return buckets, nil
 }
 
+func (r *PostgresRepository) ListAccessibleBuckets(ctx context.Context, userID int64) ([]Bucket, error) {
+	query := `
+		SELECT DISTINCT b.id, b.name, b.owner_id, b.region, b.acl, b.versioning, b.default_expiry,
+		       b.max_size_bytes, b.max_traffic_bytes, b.used_traffic_bytes, b.max_objects, b.created_at
+		FROM buckets b
+		LEFT JOIN bucket_access ba ON ba.bucket_id = b.id
+		WHERE b.owner_id = $1 OR ba.user_id = $1
+		ORDER BY b.name
+	`
+	rows, err := r.conn(ctx).Query(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var buckets []Bucket
+	for rows.Next() {
+		var bucket Bucket
+		if err := rows.Scan(&bucket.ID, &bucket.Name, &bucket.OwnerID, &bucket.Region,
+			&bucket.ACL, &bucket.Versioning, &bucket.DefaultExpiry, &bucket.MaxSizeBytes,
+			&bucket.MaxTrafficBytes, &bucket.UsedTrafficBytes, &bucket.MaxObjects, &bucket.CreatedAt); err != nil {
+			return nil, err
+		}
+		buckets = append(buckets, bucket)
+	}
+	return buckets, rows.Err()
+}
+
 func (r *PostgresRepository) ListAllBuckets(ctx context.Context) ([]Bucket, error) {
-	query := `SELECT id, name, owner_id, region, acl, versioning, default_expiry, created_at FROM buckets ORDER BY name`
+	query := `SELECT id, name, owner_id, region, acl, versioning, default_expiry, max_size_bytes, max_traffic_bytes, used_traffic_bytes, max_objects, created_at FROM buckets ORDER BY name`
 	rows, err := r.conn(ctx).Query(ctx, query)
 	if err != nil {
 		return nil, err
@@ -273,7 +432,7 @@ func (r *PostgresRepository) ListAllBuckets(ctx context.Context) ([]Bucket, erro
 	for rows.Next() {
 		var bucket Bucket
 		if err := rows.Scan(&bucket.ID, &bucket.Name, &bucket.OwnerID, &bucket.Region,
-			&bucket.ACL, &bucket.Versioning, &bucket.DefaultExpiry, &bucket.CreatedAt); err != nil {
+			&bucket.ACL, &bucket.Versioning, &bucket.DefaultExpiry, &bucket.MaxSizeBytes, &bucket.MaxTrafficBytes, &bucket.UsedTrafficBytes, &bucket.MaxObjects, &bucket.CreatedAt); err != nil {
 			return nil, err
 		}
 		buckets = append(buckets, bucket)
@@ -282,8 +441,13 @@ func (r *PostgresRepository) ListAllBuckets(ctx context.Context) ([]Bucket, erro
 }
 
 func (r *PostgresRepository) UpdateBucket(ctx context.Context, bucket *Bucket) error {
-	query := `UPDATE buckets SET acl = $1, versioning = $2, default_expiry = $3 WHERE id = $4`
-	_, err := r.conn(ctx).Exec(ctx, query, bucket.ACL, bucket.Versioning, bucket.DefaultExpiry, bucket.ID)
+	query := `UPDATE buckets SET acl = $1, versioning = $2, default_expiry = $3, max_size_bytes = $4, max_traffic_bytes = $5, used_traffic_bytes = $6, max_objects = $7 WHERE id = $8`
+	_, err := r.conn(ctx).Exec(ctx, query, bucket.ACL, bucket.Versioning, bucket.DefaultExpiry, bucket.MaxSizeBytes, bucket.MaxTrafficBytes, bucket.UsedTrafficBytes, bucket.MaxObjects, bucket.ID)
+	return err
+}
+
+func (r *PostgresRepository) IncrementBucketTraffic(ctx context.Context, bucketID int64, delta int64) error {
+	_, err := r.conn(ctx).Exec(ctx, `UPDATE buckets SET used_traffic_bytes = used_traffic_bytes + $1 WHERE id = $2`, delta, bucketID)
 	return err
 }
 
@@ -404,18 +568,18 @@ func (r *PostgresRepository) ListObjects(ctx context.Context, bucketID int64, op
 			break
 		}
 
-			// 处理 delimiter
-			if opts.Delimiter != "" {
-				keyWithoutPrefix := strings.TrimPrefix(obj.Key, opts.Prefix)
-				if idx := strings.Index(keyWithoutPrefix, opts.Delimiter); idx >= 0 {
-					prefix := opts.Prefix + keyWithoutPrefix[:idx+1]
-					if !prefixSet[prefix] {
-						prefixSet[prefix] = true
-						result.CommonPrefixes = append(result.CommonPrefixes, prefix)
-					}
-					continue
+		// 处理 delimiter
+		if opts.Delimiter != "" {
+			keyWithoutPrefix := strings.TrimPrefix(obj.Key, opts.Prefix)
+			if idx := strings.Index(keyWithoutPrefix, opts.Delimiter); idx >= 0 {
+				prefix := opts.Prefix + keyWithoutPrefix[:idx+1]
+				if !prefixSet[prefix] {
+					prefixSet[prefix] = true
+					result.CommonPrefixes = append(result.CommonPrefixes, prefix)
 				}
+				continue
 			}
+		}
 
 		result.Objects = append(result.Objects, obj)
 		result.NextMarker = obj.Key

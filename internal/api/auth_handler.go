@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gooss/server/internal/auth"
@@ -18,11 +19,14 @@ type LoginRequest struct {
 
 // LoginResponse 登录响应
 type LoginResponse struct {
-	AccessKey string `json:"accessKey"`
-	SecretKey string `json:"secretKey"`
-	Endpoint  string `json:"endpoint"`
-	Username  string `json:"username"`
-	IsAdmin   bool   `json:"isAdmin"`
+	AccessKey   string          `json:"accessKey"`
+	SecretKey   string          `json:"secretKey"`
+	Endpoint    string          `json:"endpoint"`
+	Username    string          `json:"username"`
+	DisplayName string          `json:"displayName"`
+	IsAdmin     bool            `json:"isAdmin"`
+	Roles       []metadata.Role `json:"roles"`
+	Permissions []string        `json:"permissions"`
 }
 
 // Login 用户登录
@@ -64,20 +68,26 @@ func (s *Server) Login(c *gin.Context) {
 	cred := credentials[0]
 
 	c.JSON(http.StatusOK, LoginResponse{
-		AccessKey: cred.AccessKey,
-		SecretKey: cred.SecretKey,
-		Endpoint:  s.cfg.Server.APIEndpoint,
-		Username:  user.Username,
-		IsAdmin:   user.IsAdmin,
+		AccessKey:   cred.AccessKey,
+		SecretKey:   cred.SecretKey,
+		Endpoint:    s.cfg.Server.APIEndpoint,
+		Username:    user.Username,
+		DisplayName: user.DisplayName,
+		IsAdmin:     user.IsAdmin,
+		Roles:       user.Roles,
+		Permissions: user.Permissions,
 	})
 }
 
 // CreateUserRequest 创建用户请求
 type CreateUserRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required,min=8"`
-	Email    string `json:"email"`
-	IsAdmin  bool   `json:"isAdmin"`
+	Username    string   `json:"username" binding:"required"`
+	Password    string   `json:"password" binding:"required,min=8"`
+	DisplayName string   `json:"displayName"`
+	Email       string   `json:"email"`
+	IsAdmin     bool     `json:"isAdmin"`
+	RoleIDs     []int64  `json:"roleIds"`
+	BucketNames []string `json:"bucketNames"`
 }
 
 // CreateUser 创建用户（仅管理员）
@@ -113,6 +123,7 @@ func (s *Server) CreateUser(c *gin.Context) {
 	user := &metadata.User{
 		Username:     req.Username,
 		PasswordHash: string(hashedPassword),
+		DisplayName:  req.DisplayName,
 		Email:        req.Email,
 		Status:       "active",
 		IsAdmin:      req.IsAdmin,
@@ -141,10 +152,27 @@ func (s *Server) CreateUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create credential"})
 		return
 	}
+	if len(req.RoleIDs) > 0 {
+		if err := s.repo.SetUserRoles(c.Request.Context(), user.ID, req.RoleIDs); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to assign roles"})
+			return
+		}
+	}
+	for _, bucketName := range req.BucketNames {
+		bucket, err := s.repo.GetBucketByName(c.Request.Context(), bucketName)
+		if err == nil && bucket != nil {
+			_ = s.repo.UpsertBucketAccess(c.Request.Context(), &metadata.BucketAccess{
+				BucketID:   bucket.ID,
+				UserID:     user.ID,
+				Permission: "write",
+			})
+		}
+	}
+	createdUser, _ := s.repo.GetUserByID(c.Request.Context(), user.ID)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message":   "User created successfully",
-		"user":      user,
+		"user":      createdUser,
 		"accessKey": accessKey,
 		"secretKey": secretKey,
 	})
@@ -169,10 +197,12 @@ func (s *Server) ListUsers(c *gin.Context) {
 
 // UpdateUserRequest 更新用户请求
 type UpdateUserRequest struct {
-	Password *string `json:"password,omitempty"`
-	Email    *string `json:"email,omitempty"`
-	Status   *string `json:"status,omitempty"`
-	IsAdmin  *bool   `json:"isAdmin,omitempty"`
+	Password    *string `json:"password,omitempty"`
+	DisplayName *string `json:"displayName,omitempty"`
+	Email       *string `json:"email,omitempty"`
+	Status      *string `json:"status,omitempty"`
+	IsAdmin     *bool   `json:"isAdmin,omitempty"`
+	RoleIDs     []int64 `json:"roleIds,omitempty"`
 }
 
 // UpdateUser 更新用户（仅管理员）
@@ -215,6 +245,9 @@ func (s *Server) UpdateUser(c *gin.Context) {
 	if req.Email != nil {
 		user.Email = *req.Email
 	}
+	if req.DisplayName != nil {
+		user.DisplayName = *req.DisplayName
+	}
 	if req.Status != nil {
 		user.Status = *req.Status
 	}
@@ -226,8 +259,15 @@ func (s *Server) UpdateUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
 		return
 	}
+	if req.RoleIDs != nil {
+		if err := s.repo.SetUserRoles(c.Request.Context(), user.ID, req.RoleIDs); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user roles"})
+			return
+		}
+	}
+	updatedUser, _ := s.repo.GetUserByID(c.Request.Context(), user.ID)
 
-	c.JSON(http.StatusOK, gin.H{"message": "User updated successfully", "user": user})
+	c.JSON(http.StatusOK, gin.H{"message": "User updated successfully", "user": updatedUser})
 }
 
 // DeleteUser 删除用户（仅管理员）
@@ -256,6 +296,113 @@ func (s *Server) DeleteUser(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
+}
+
+type CreateCredentialRequest struct {
+	UserID      int64   `json:"userId" binding:"required"`
+	Description string  `json:"description"`
+	ExpiresAt   *string `json:"expiresAt"`
+}
+
+func (s *Server) CreateCredential(c *gin.Context) {
+	var req CreateCredentialRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, err := s.repo.GetUserByID(c.Request.Context(), req.UserID)
+	if err != nil || user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	accessKey, secretKey, err := auth.GenerateCredentials()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate credentials"})
+		return
+	}
+
+	var expiresAt *time.Time
+	if req.ExpiresAt != nil && *req.ExpiresAt != "" {
+		parsed, err := time.Parse(time.RFC3339, *req.ExpiresAt)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid expiresAt"})
+			return
+		}
+		expiresAt = &parsed
+	}
+
+	credential := &metadata.Credential{
+		UserID:      user.ID,
+		AccessKey:   accessKey,
+		SecretKey:   secretKey,
+		Description: req.Description,
+		Status:      "active",
+		ExpiresAt:   expiresAt,
+	}
+	if err := s.repo.CreateCredential(c.Request.Context(), credential); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create credential"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "Credential created successfully", "credential": credential})
+}
+
+type UpdateCredentialRequest struct {
+	Description *string `json:"description,omitempty"`
+	Status      *string `json:"status,omitempty"`
+	ExpiresAt   *string `json:"expiresAt,omitempty"`
+}
+
+func (s *Server) UpdateCredential(c *gin.Context) {
+	credentialID := parseInt64(c.Param("id"))
+	credential, err := s.repo.GetCredentialByID(c.Request.Context(), credentialID)
+	if err != nil || credential == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Credential not found"})
+		return
+	}
+
+	var req UpdateCredentialRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.Description != nil {
+		credential.Description = *req.Description
+	}
+	if req.Status != nil {
+		credential.Status = *req.Status
+	}
+	if req.ExpiresAt != nil {
+		if *req.ExpiresAt == "" {
+			credential.ExpiresAt = nil
+		} else {
+			parsed, err := time.Parse(time.RFC3339, *req.ExpiresAt)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid expiresAt"})
+				return
+			}
+			credential.ExpiresAt = &parsed
+		}
+	}
+
+	if err := s.repo.UpdateCredential(c.Request.Context(), credential); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update credential"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Credential updated successfully", "credential": credential})
+}
+
+func (s *Server) DeleteCredential(c *gin.Context) {
+	credentialID := parseInt64(c.Param("id"))
+	if err := s.repo.DeleteCredential(c.Request.Context(), credentialID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete credential"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Credential deleted successfully"})
 }
 
 // ChangePasswordRequest 修改密码请求

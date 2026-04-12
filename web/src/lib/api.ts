@@ -7,7 +7,90 @@ export interface StoredCredentials {
   endpoint: string
   publicEndpoint?: string
   username?: string
+  displayName?: string
   isAdmin?: boolean
+  roles?: RoleRecord[]
+  permissions?: string[]
+}
+
+export interface RoleRecord {
+  id: number
+  name: string
+  description: string
+  permissions: string[]
+}
+
+export interface UserRecord {
+  id: number
+  username: string
+  displayName?: string
+  email?: string
+  status: string
+  isAdmin: boolean
+  roles?: RoleRecord[]
+  permissions?: string[]
+}
+
+export interface CredentialRecord {
+  id: number
+  userId: number
+  accessKey: string
+  secretKey: string
+  description?: string
+  status: string
+  createdAt: string
+  expiresAt?: string | null
+}
+
+export interface BucketAdminRecord {
+  id: number
+  name: string
+  ownerId: number
+  region: string
+  acl: string
+  defaultExpiry: string
+  maxSizeBytes: number
+  maxTrafficBytes: number
+  usedTrafficBytes: number
+  maxObjects: number
+  createdAt: string
+}
+
+export interface BucketAccessRecord {
+  id: number
+  bucketId: number
+  userId: number
+  permission: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TicketRecord {
+  id: number
+  requesterId: number
+  assigneeId?: number | null
+  title: string
+  description: string
+  category: string
+  priority: string
+  status: string
+  bucketId?: number | null
+  bucketName?: string
+  requester?: string
+  assignee?: string
+  createdAt: string
+  updatedAt: string
+  resolvedAt?: string | null
+}
+
+export interface TicketMessageRecord {
+  id: number
+  ticketId: number
+  authorId: number
+  author?: string
+  message: string
+  isInternal: boolean
+  createdAt: string
 }
 
 export interface BucketSummary {
@@ -106,6 +189,107 @@ const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0'])
 
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, '')
+}
+
+function readField<T = any>(value: any, lower: string, upper: string): T | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined
+  }
+  return value[lower] ?? value[upper]
+}
+
+function normalizeRole(value: any): RoleRecord {
+  return {
+    id: readField<number>(value, 'id', 'ID') || 0,
+    name: readField<string>(value, 'name', 'Name') || '',
+    description: readField<string>(value, 'description', 'Description') || '',
+    permissions: readField<string[]>(value, 'permissions', 'Permissions') || [],
+  }
+}
+
+function normalizeUser(value: any): UserRecord {
+  return {
+    id: readField<number>(value, 'id', 'ID') || 0,
+    username: readField<string>(value, 'username', 'Username') || '',
+    displayName: readField<string>(value, 'displayName', 'DisplayName') || '',
+    email: readField<string>(value, 'email', 'Email') || '',
+    status: readField<string>(value, 'status', 'Status') || '',
+    isAdmin: !!readField<boolean>(value, 'isAdmin', 'IsAdmin'),
+    roles: (readField<any[]>(value, 'roles', 'Roles') || []).map(normalizeRole),
+    permissions: readField<string[]>(value, 'permissions', 'Permissions') || [],
+  }
+}
+
+function normalizeBucket(value: any): BucketAdminRecord {
+  return {
+    id: readField<number>(value, 'id', 'ID') || 0,
+    name: readField<string>(value, 'name', 'Name') || '',
+    ownerId: readField<number>(value, 'ownerId', 'OwnerID') || 0,
+    region: readField<string>(value, 'region', 'Region') || '',
+    acl: readField<string>(value, 'acl', 'ACL') || '',
+    defaultExpiry: readField<string>(value, 'defaultExpiry', 'DefaultExpiry') || '',
+    maxSizeBytes: readField<number>(value, 'maxSizeBytes', 'MaxSizeBytes') || 0,
+    maxTrafficBytes: readField<number>(value, 'maxTrafficBytes', 'MaxTrafficBytes') || 0,
+    usedTrafficBytes: readField<number>(value, 'usedTrafficBytes', 'UsedTrafficBytes') || 0,
+    maxObjects: readField<number>(value, 'maxObjects', 'MaxObjects') || 0,
+    createdAt: readField<string>(value, 'createdAt', 'CreatedAt') || '',
+  }
+}
+
+function normalizeBucketAccess(value: any): BucketAccessRecord {
+  return {
+    id: readField<number>(value, 'id', 'ID') || 0,
+    bucketId: readField<number>(value, 'bucketId', 'BucketID') || 0,
+    userId: readField<number>(value, 'userId', 'UserID') || 0,
+    permission: readField<string>(value, 'permission', 'Permission') || '',
+    createdAt: readField<string>(value, 'createdAt', 'CreatedAt') || '',
+    updatedAt: readField<string>(value, 'updatedAt', 'UpdatedAt') || '',
+  }
+}
+
+function normalizeTicket(value: any): TicketRecord {
+  return {
+    id: readField<number>(value, 'id', 'ID') || 0,
+    requesterId: readField<number>(value, 'requesterId', 'RequesterID') || 0,
+    assigneeId: readField<number | null>(value, 'assigneeId', 'AssigneeID') ?? null,
+    title: readField<string>(value, 'title', 'Title') || '',
+    description: readField<string>(value, 'description', 'Description') || '',
+    category: readField<string>(value, 'category', 'Category') || '',
+    priority: readField<string>(value, 'priority', 'Priority') || '',
+    status: readField<string>(value, 'status', 'Status') || '',
+    bucketId: readField<number | null>(value, 'bucketId', 'BucketID') ?? null,
+    bucketName: readField<string>(value, 'bucketName', 'BucketName') || '',
+    requester: readField<string>(value, 'requester', 'Requester') || '',
+    assignee: readField<string>(value, 'assignee', 'Assignee') || '',
+    createdAt: readField<string>(value, 'createdAt', 'CreatedAt') || '',
+    updatedAt: readField<string>(value, 'updatedAt', 'UpdatedAt') || '',
+    resolvedAt: readField<string | null>(value, 'resolvedAt', 'ResolvedAt') ?? null,
+  }
+}
+
+function normalizeTicketMessage(value: any): TicketMessageRecord {
+  return {
+    id: readField<number>(value, 'id', 'ID') || 0,
+    ticketId: readField<number>(value, 'ticketId', 'TicketID') || 0,
+    authorId: readField<number>(value, 'authorId', 'AuthorID') || 0,
+    author: readField<string>(value, 'author', 'Author') || '',
+    message: readField<string>(value, 'message', 'Message') || '',
+    isInternal: !!readField<boolean>(value, 'isInternal', 'IsInternal'),
+    createdAt: readField<string>(value, 'createdAt', 'CreatedAt') || '',
+  }
+}
+
+function normalizeCredential(value: any): CredentialRecord {
+  return {
+    id: readField<number>(value, 'id', 'ID') || 0,
+    userId: readField<number>(value, 'userId', 'UserID') || 0,
+    accessKey: readField<string>(value, 'accessKey', 'AccessKey') || '',
+    secretKey: readField<string>(value, 'secretKey', 'SecretKey') || '',
+    description: readField<string>(value, 'description', 'Description') || '',
+    status: readField<string>(value, 'status', 'Status') || '',
+    createdAt: readField<string>(value, 'createdAt', 'CreatedAt') || '',
+    expiresAt: readField<string | null>(value, 'expiresAt', 'ExpiresAt') ?? null,
+  }
 }
 
 function getBrowserOrigin() {
@@ -400,9 +584,12 @@ export function isBucketPublic(policy: BucketPolicy | null | undefined) {
 }
 
 export async function loginUser(username: string, password: string) {
-  const response = await api.post<StoredCredentials & { username?: string; isAdmin?: boolean }>('/auth/login', { username, password })
+  const response = await api.post<StoredCredentials>('/auth/login', { username, password })
   return {
     ...response.data,
+    displayName: response.data.displayName || (response.data as any).DisplayName || '',
+    roles: (response.data.roles || (response.data as any).Roles || []).map(normalizeRole),
+    permissions: response.data.permissions || (response.data as any).Permissions || [],
     endpoint: getApiEndpoint(),
     publicEndpoint: resolvePublicEndpoint(response.data?.endpoint),
   }
@@ -570,6 +757,190 @@ export async function getAuditLogStats(): Promise<AuditStatsResponse> {
 
 export async function startMigration(data: MigrationPayload) {
   const response = await signedRequest('POST', '/admin/migration/start', data)
+  return response.data
+}
+
+export async function listUsers() {
+  const response = await signedRequest<UserRecord[]>('GET', '/admin/users')
+  return (response.data || []).map(normalizeUser)
+}
+
+export async function createUser(data: {
+  username: string
+  password: string
+  displayName?: string
+  email?: string
+  isAdmin?: boolean
+  roleIds?: number[]
+  bucketNames?: string[]
+}) {
+  const response = await signedRequest('POST', '/admin/users', data)
+  return {
+    ...response.data,
+    user: response.data?.user ? normalizeUser(response.data.user) : undefined,
+  }
+}
+
+export async function updateUser(id: number, data: {
+  password?: string
+  displayName?: string
+  email?: string
+  status?: string
+  isAdmin?: boolean
+  roleIds?: number[]
+}) {
+  const response = await signedRequest('PUT', `/admin/users/${id}`, data)
+  return {
+    ...response.data,
+    user: response.data?.user ? normalizeUser(response.data.user) : undefined,
+  }
+}
+
+export async function deleteUser(id: number) {
+  const response = await signedRequest('DELETE', `/admin/users/${id}`)
+  return response.data
+}
+
+export async function listRoles() {
+  const response = await signedRequest<RoleRecord[]>('GET', '/admin/roles')
+  return (response.data || []).map(normalizeRole)
+}
+
+export async function createRole(data: {
+  name: string
+  description?: string
+  permissions?: string[]
+}) {
+  const response = await signedRequest<RoleRecord>('POST', '/admin/roles', data)
+  return normalizeRole(response.data)
+}
+
+export async function updateRole(id: number, data: {
+  name: string
+  description?: string
+  permissions?: string[]
+}) {
+  const response = await signedRequest<RoleRecord>('PUT', `/admin/roles/${id}`, data)
+  return normalizeRole(response.data)
+}
+
+export async function deleteRole(id: number) {
+  const response = await signedRequest('DELETE', `/admin/roles/${id}`)
+  return response.data
+}
+
+export async function listAdminBuckets() {
+  const response = await signedRequest<BucketAdminRecord[]>('GET', '/admin/buckets')
+  return (response.data || []).map(normalizeBucket)
+}
+
+export async function updateAdminBucket(id: number, data: {
+  defaultExpiry?: string
+  maxSizeBytes?: number
+  maxTrafficBytes?: number
+  maxObjects?: number
+  acl?: string
+}) {
+  const response = await signedRequest<BucketAdminRecord>('PUT', `/admin/buckets/${id}`, data)
+  return normalizeBucket(response.data)
+}
+
+export async function listBucketAccess(bucketId: number) {
+  const response = await signedRequest<BucketAccessRecord[]>('GET', `/admin/buckets/${bucketId}/access`)
+  return (response.data || []).map(normalizeBucketAccess)
+}
+
+export async function upsertBucketAccess(bucketId: number, data: { userId: number; permission: string }) {
+  const response = await signedRequest('POST', `/admin/buckets/${bucketId}/access`, data)
+  return response.data
+}
+
+export async function deleteBucketAccess(bucketId: number, userId: number) {
+  const response = await signedRequest('DELETE', `/admin/buckets/${bucketId}/access/${userId}`)
+  return response.data
+}
+
+export async function createCredential(data: {
+  userId: number
+  description?: string
+  expiresAt?: string | null
+}) {
+  const response = await signedRequest('POST', '/admin/credentials', data)
+  return {
+    ...response.data,
+    credential: response.data?.credential ? normalizeCredential(response.data.credential) : undefined,
+  }
+}
+
+export async function updateCredential(id: number, data: {
+  description?: string
+  status?: string
+  expiresAt?: string | null
+}) {
+  const response = await signedRequest('PUT', `/admin/credentials/${id}`, data)
+  return {
+    ...response.data,
+    credential: response.data?.credential ? normalizeCredential(response.data.credential) : undefined,
+  }
+}
+
+export async function deleteCredential(id: number) {
+  const response = await signedRequest('DELETE', `/admin/credentials/${id}`)
+  return response.data
+}
+
+export async function listTickets(scope: 'user' | 'admin' = 'user', params?: {
+  status?: string
+  category?: string
+  priority?: string
+}) {
+  const query = new URLSearchParams()
+  if (params?.status) query.set('status', params.status)
+  if (params?.category) query.set('category', params.category)
+  if (params?.priority) query.set('priority', params.priority)
+  const prefix = scope === 'admin' ? '/admin/tickets' : '/user/tickets'
+  const response = await signedRequest<TicketRecord[]>('GET', `${prefix}${query.toString() ? `?${query.toString()}` : ''}`)
+  return (response.data || []).map(normalizeTicket)
+}
+
+export async function getTicket(id: number, scope: 'user' | 'admin' = 'user') {
+  const prefix = scope === 'admin' ? '/admin/tickets' : '/user/tickets'
+  const response = await signedRequest<{ ticket: TicketRecord; messages: TicketMessageRecord[] }>('GET', `${prefix}/${id}`)
+  return {
+    ticket: normalizeTicket(response.data.ticket),
+    messages: (response.data.messages || []).map(normalizeTicketMessage),
+  }
+}
+
+export async function createTicket(data: {
+  title: string
+  description: string
+  category?: string
+  priority?: string
+  bucketId?: number | null
+}) {
+  const response = await signedRequest<TicketRecord>('POST', '/user/tickets', data)
+  return normalizeTicket(response.data)
+}
+
+export async function updateTicket(id: number, data: {
+  status?: string
+  priority?: string
+  category?: string
+  assigneeId?: number | null
+  description?: string
+}, scope: 'user' | 'admin' = 'user') {
+  const prefix = scope === 'admin' ? '/admin/tickets' : '/user/tickets'
+  const response = await signedRequest<TicketRecord>('PUT', `${prefix}/${id}`, data)
+  return normalizeTicket(response.data)
+}
+
+export async function createTicketMessage(id: number, data: {
+  message: string
+  isInternal?: boolean
+}, scope: 'user' | 'admin' = 'user') {
+  const prefix = scope === 'admin' ? '/admin/tickets' : '/user/tickets'
+  const response = await signedRequest('POST', `${prefix}/${id}/messages`, data)
   return response.data
 }
 

@@ -69,6 +69,11 @@ func (s *Server) registerRoutes(router gin.IRouter) {
 	user.Use(s.AuditMiddleware())
 	{
 		user.POST("/change-password", s.ChangePassword)
+		user.GET("/tickets", s.ListTickets)
+		user.POST("/tickets", s.CreateTicket)
+		user.GET("/tickets/:id", s.GetTicket)
+		user.PUT("/tickets/:id", s.UpdateTicket)
+		user.POST("/tickets/:id/messages", s.CreateTicketMessage)
 	}
 
 	// 用户管理路由（需要管理员权限）
@@ -81,6 +86,22 @@ func (s *Server) registerRoutes(router gin.IRouter) {
 		admin.POST("/users", s.CreateUser)
 		admin.PUT("/users/:id", s.UpdateUser)
 		admin.DELETE("/users/:id", s.DeleteUser)
+		admin.POST("/credentials", s.CreateCredential)
+		admin.PUT("/credentials/:id", s.UpdateCredential)
+		admin.DELETE("/credentials/:id", s.DeleteCredential)
+		admin.GET("/roles", s.ListRoles)
+		admin.POST("/roles", s.CreateRole)
+		admin.PUT("/roles/:id", s.UpdateRole)
+		admin.DELETE("/roles/:id", s.DeleteRole)
+		admin.GET("/buckets", s.ListAllBuckets)
+		admin.PUT("/buckets/:id", s.UpdateBucketAdmin)
+		admin.GET("/buckets/:id/access", s.ListBucketAccess)
+		admin.POST("/buckets/:id/access", s.UpsertBucketAccess)
+		admin.DELETE("/buckets/:id/access/:userId", s.DeleteBucketAccess)
+		admin.GET("/tickets", s.ListTickets)
+		admin.GET("/tickets/:id", s.GetTicket)
+		admin.PUT("/tickets/:id", s.UpdateTicket)
+		admin.POST("/tickets/:id/messages", s.CreateTicketMessage)
 
 		// 审计日志路由
 		admin.GET("/audit-logs", s.GetAuditLogs)
@@ -340,6 +361,9 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 		c.Set("username", user.Username)
 		c.Set("is_admin", user.IsAdmin)
 		c.Set("access_key", accessKey)
+		c.Set("display_name", user.DisplayName)
+		c.Set("roles", user.Roles)
+		c.Set("permissions", user.Permissions)
 
 		c.Next()
 	}

@@ -9,6 +9,8 @@ import About from './pages/About'
 import Login from './pages/Login'
 import AuditLogs from './pages/AuditLogs'
 import Migration from './pages/Migration'
+import AccessControl from './pages/AccessControl'
+import Tickets from './pages/Tickets'
 import { useAuth } from './hooks/useAuth'
 
 function AdminRoute({ children }: { children: ReactElement }) {
@@ -33,6 +35,8 @@ function App() {
         <Route path="/buckets" element={<Buckets />} />
         <Route path="/buckets/:bucket/*" element={<Objects />} />
         <Route path="/migration" element={<AdminRoute><Migration /></AdminRoute>} />
+        <Route path="/iam" element={<AdminRoute><AccessControl /></AdminRoute>} />
+        <Route path="/tickets" element={<Tickets />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/audit-logs" element={<AdminRoute><AuditLogs /></AdminRoute>} />
         <Route path="/about" element={<About />} />
