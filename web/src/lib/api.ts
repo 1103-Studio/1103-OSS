@@ -120,6 +120,20 @@ function normalizeApiBaseUrl(value?: string) {
   if (!normalized) {
     return '/api'
   }
+
+  if (typeof window !== 'undefined') {
+    try {
+      const resolved = new URL(toAbsoluteUrl(normalized))
+      const browserOrigin = new URL(getBrowserOrigin())
+
+      if (LOOPBACK_HOSTS.has(resolved.hostname) && resolved.origin !== browserOrigin.origin) {
+        return '/api'
+      }
+    } catch {
+      return '/api'
+    }
+  }
+
   return trimTrailingSlash(normalized)
 }
 
