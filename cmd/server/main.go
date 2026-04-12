@@ -138,6 +138,21 @@ func initAdminUser(repo metadata.Repository, cfg *config.Config) (*adminBootstra
 		info.UserCreated = true
 		info.Password = cfg.Auth.RootPassword
 		logger.Infof("Created admin user: %s", user.Username)
+	} else if user.PasswordHash == "$2a$10$placeholder_hash_will_be_updated" || user.PasswordHash == "" {
+		passwordHash, err := auth.HashPassword(cfg.Auth.RootPassword)
+		if err != nil {
+			return nil, err
+		}
+
+		user.PasswordHash = passwordHash
+		user.Status = "active"
+		user.IsAdmin = true
+		if err := repo.UpdateUser(ctx, user); err != nil {
+			return nil, err
+		}
+
+		info.Password = cfg.Auth.RootPassword
+		logger.Infof("Updated bootstrap admin password for user: %s", user.Username)
 	}
 
 	// 为管理员生成初始凭证

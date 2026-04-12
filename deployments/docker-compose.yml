@@ -141,7 +141,7 @@ services:
       - ../web:/app
       - node-modules:/app/node_modules
     ports:
-      - "3001:3000"
+      - "${WEB_PORT:-3001}:3000"
     environment:
       - VITE_API_PROXY_TARGET=http://gooss-api-dev:9000
     networks:
