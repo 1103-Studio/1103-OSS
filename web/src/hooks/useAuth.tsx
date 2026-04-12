@@ -1,14 +1,19 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { getApiEndpoint } from '../lib/api'
 
 interface Credentials {
   accessKey: string
   secretKey: string
   endpoint: string
+  publicEndpoint?: string
+  username?: string
+  isAdmin?: boolean
 }
 
 interface AuthContextType {
   credentials: Credentials | null
   isAuthenticated: boolean
+  isAdmin: boolean
   login: (creds: Credentials) => void
   logout: () => void
 }
@@ -22,7 +27,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const stored = localStorage.getItem('oss_credentials')
     if (stored) {
       try {
-        setCredentials(JSON.parse(stored))
+        const parsed = JSON.parse(stored) as Credentials
+        setCredentials({
+          ...parsed,
+          endpoint: parsed.endpoint || getApiEndpoint(),
+          publicEndpoint: parsed.publicEndpoint || parsed.endpoint || getApiEndpoint(),
+          isAdmin: !!parsed.isAdmin,
+        })
       } catch {
         localStorage.removeItem('oss_credentials')
       }
@@ -30,8 +41,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = (creds: Credentials) => {
-    localStorage.setItem('oss_credentials', JSON.stringify(creds))
-    setCredentials(creds)
+    const normalized = {
+      ...creds,
+      endpoint: creds.endpoint || getApiEndpoint(),
+      publicEndpoint: creds.publicEndpoint || creds.endpoint || getApiEndpoint(),
+      isAdmin: !!creds.isAdmin,
+    }
+    localStorage.setItem('oss_credentials', JSON.stringify(normalized))
+    setCredentials(normalized)
   }
 
   const logout = () => {
@@ -40,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ credentials, isAuthenticated: !!credentials, login, logout }}>
+    <AuthContext.Provider value={{ credentials, isAuthenticated: !!credentials, isAdmin: !!credentials?.isAdmin, login, logout }}>
       {children}
     </AuthContext.Provider>
   )

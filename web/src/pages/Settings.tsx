@@ -2,8 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { Key, Server, Shield, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
-import axios from 'axios'
-import { API_BASE_URL } from '../lib/api'
+import { changePassword, getStorageEndpoint } from '../lib/api'
 
 export default function Settings() {
   const { credentials } = useAuth()
@@ -27,20 +26,7 @@ export default function Settings() {
 
     setIsChangingPassword(true)
     try {
-      const { getSignedHeaders } = await import('../lib/aws-signature-v4')
-      const creds = JSON.parse(localStorage.getItem('oss_credentials') || '{}')
-      
-      const body = { oldPassword, newPassword }
-      const headers = await getSignedHeaders(
-        'POST',
-        `${API_BASE_URL}/user/change-password`,
-        creds.accessKey,
-        creds.secretKey,
-        body
-      )
-      
-      await axios.post(`${API_BASE_URL}/user/change-password`, body, { headers })
-
+      await changePassword(oldPassword, newPassword)
       toast.success('密码修改成功')
       setOldPassword('')
       setNewPassword('')
@@ -132,7 +118,7 @@ export default function Settings() {
                 端点地址
               </label>
               <div className="font-mono text-sm bg-gray-50 dark:bg-gray-700 px-3 py-2 rounded border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white">
-                {credentials?.endpoint || 'http://localhost:9000'}
+                {credentials?.publicEndpoint || credentials?.endpoint || getStorageEndpoint()}
               </div>
             </div>
           </div>
@@ -179,7 +165,7 @@ aws configure set aws_secret_access_key YOUR_SECRET_KEY
 aws configure set default.region us-east-1
 
 # Use with endpoint
-aws --endpoint-url ${credentials?.endpoint || 'http://localhost:9000'} s3 ls`}
+aws --endpoint-url ${credentials?.publicEndpoint || credentials?.endpoint || getStorageEndpoint()} s3 ls`}
               </pre>
             </div>
             <div>
@@ -188,7 +174,7 @@ aws --endpoint-url ${credentials?.endpoint || 'http://localhost:9000'} s3 ls`}
 {`import boto3
 
 s3 = boto3.client('s3',
-    endpoint_url='${credentials?.endpoint || 'http://localhost:9000'}',
+    endpoint_url='${credentials?.publicEndpoint || credentials?.endpoint || getStorageEndpoint()}',
     aws_access_key_id='${credentials?.accessKey || 'YOUR_ACCESS_KEY'}',
     aws_secret_access_key='YOUR_SECRET_KEY'
 )
@@ -204,7 +190,7 @@ print(response['Buckets'])`}
 {`import { S3Client, ListBucketsCommand } from '@aws-sdk/client-s3';
 
 const client = new S3Client({
-  endpoint: '${credentials?.endpoint || 'http://localhost:9000'}',
+  endpoint: '${credentials?.publicEndpoint || credentials?.endpoint || getStorageEndpoint()}',
   region: 'us-east-1',
   credentials: {
     accessKeyId: '${credentials?.accessKey || 'YOUR_ACCESS_KEY'}',

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gooss/server/internal/storage"
@@ -39,8 +40,59 @@ func New(basePath string) (*LocalStorage, error) {
 	}, nil
 }
 
+// isValidBucketName 验证存储桶名称是否安全
+func isValidBucketName(bucket string) bool {
+	if bucket == "" {
+		return false
+	}
+
+	// 阻止路径遍历
+	if strings.Contains(bucket, "..") || strings.Contains(bucket, "/") || strings.Contains(bucket, "\\") {
+		return false
+	}
+
+	// 阻止绝对路径
+	if filepath.IsAbs(bucket) {
+		return false
+	}
+
+	return true
+}
+
+// isValidObjectKey 验证对象键是否安全（防止路径遍历攻击）
+func isValidObjectKey(key string) bool {
+	if key == "" {
+		return true
+	}
+
+	// 清理路径
+	cleanKey := filepath.Clean(key)
+
+	// 阻止路径遍历
+	if strings.Contains(cleanKey, "..") {
+		return false
+	}
+
+	// 阻止绝对路径
+	if filepath.IsAbs(cleanKey) {
+		return false
+	}
+
+	// 阻止以斜杠开头的路径
+	if strings.HasPrefix(key, "/") || strings.HasPrefix(key, "\\") {
+		return false
+	}
+
+	return true
+}
+
 // objectPath 获取对象存储路径
 func (l *LocalStorage) objectPath(bucket, key string) string {
+	// 验证存储桶名称和对象键安全性，防止路径遍历攻击
+	if !isValidBucketName(bucket) || !isValidObjectKey(key) {
+		// 返回一个无效路径，后续文件操作会失败
+		return filepath.Join(l.basePath, "__INVALID__", "__PATH_TRAVERSAL_DETECTED__")
+	}
 	return filepath.Join(l.basePath, bucket, key)
 }
 

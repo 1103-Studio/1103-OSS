@@ -1,17 +1,143 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { FolderOpen, Plus, Trash2, X, Info, Copy, Check, Lock, Unlock } from 'lucide-react'
-import { listBuckets, createBucket, deleteBucket, getBucketSettings, updateBucketSettings } from '../lib/api'
-import { getSignedHeaders } from '../lib/aws-signature-v4'
-import axios from 'axios'
-import { API_BASE_URL } from "../lib/api"
+import { FolderOpen, Plus, Trash2, X, Info, Copy, Check, Lock, Unlock, ChevronRight, ChevronDown, File, Folder } from 'lucide-react'
+import {
+  listBuckets,
+  createBucket,
+  deleteBucket,
+  getBucketSettings,
+  updateBucketSettings,
+  listAllObjects,
+  getBucketPublicStatus,
+  getStorageEndpoint,
+  setBucketPrivate,
+  setBucketPublic,
+} from '../lib/api'
 import toast from 'react-hot-toast'
 
 // Helper function to strip protocol from URL
 const stripProtocol = (url: string) => url.replace(/^https?:\/\//, '')
 
+// 目录树节点类型
+interface TreeNode {
+  name: string
+  path: string
+  type: 'folder' | 'file'
+  size?: number
+  children?: TreeNode[]
+}
+
+// 构建目录树
+function buildDirectoryTree(objects: { Key: string; Size: number }[]): TreeNode[] {
+  const root: TreeNode[] = []
+  
+  for (const obj of objects) {
+    const parts = obj.Key.split('/').filter(Boolean)
+    let currentLevel = root
+    let currentPath = ''
+    
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]
+      currentPath = currentPath ? `${currentPath}/${part}` : part
+      const isFile = i === parts.length - 1
+      
+      let existing = currentLevel.find(n => n.name === part)
+      
+      if (!existing) {
+        existing = {
+          name: part,
+          path: currentPath,
+          type: isFile ? 'file' : 'folder',
+          size: isFile ? obj.Size : undefined,
+          children: isFile ? undefined : []
+        }
+        currentLevel.push(existing)
+      }
+      
+      if (!isFile && existing.children) {
+        currentLevel = existing.children
+      }
+    }
+  }
+  
+  // 排序：文件夹在前，然后按名称排序
+  const sortNodes = (nodes: TreeNode[]): TreeNode[] => {
+    return nodes.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
+      return a.name.localeCompare(b.name)
+    }).map(node => ({
+      ...node,
+      children: node.children ? sortNodes(node.children) : undefined
+    }))
+  }
+  
+  return sortNodes(root)
+}
+
+// 格式化文件大小
+function formatSize(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+// 目录树节点组件
+function TreeNodeItem({ node, level = 0 }: { node: TreeNode; level?: number }) {
+  const [expanded, setExpanded] = useState(level < 2) // 默认展开前两层
+  
+  const hasChildren = node.type === 'folder' && node.children && node.children.length > 0
+  
+  return (
+    <div>
+      <div 
+        className={`flex items-center py-1 px-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer`}
+        style={{ paddingLeft: `${level * 16 + 8}px` }}
+        onClick={() => hasChildren && setExpanded(!expanded)}
+      >
+        {node.type === 'folder' ? (
+          <>
+            {hasChildren ? (
+              expanded ? (
+                <ChevronDown className="w-4 h-4 text-gray-400 mr-1 flex-shrink-0" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-gray-400 mr-1 flex-shrink-0" />
+              )
+            ) : (
+              <span className="w-4 mr-1" />
+            )}
+            <Folder className="w-4 h-4 text-yellow-500 mr-2 flex-shrink-0" />
+          </>
+        ) : (
+          <>
+            <span className="w-4 mr-1" />
+            <File className="w-4 h-4 text-gray-400 mr-2 flex-shrink-0" />
+          </>
+        )}
+        <span className="text-sm text-gray-900 dark:text-white truncate flex-1">
+          {node.name}{node.type === 'folder' ? '/' : ''}
+        </span>
+        {node.type === 'file' && node.size !== undefined && (
+          <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+            {formatSize(node.size)}
+          </span>
+        )}
+      </div>
+      {hasChildren && expanded && node.children && (
+        <div>
+          {node.children.map((child) => (
+            <TreeNodeItem key={child.path} node={child} level={level + 1} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Buckets() {
+  const storageEndpoint = getStorageEndpoint()
   const queryClient = useQueryClient()
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newBucketName, setNewBucketName] = useState('')
@@ -24,37 +150,19 @@ export default function Buckets() {
   const [isUpdatingExpiry, setIsUpdatingExpiry] = useState(false)
   const [bucketPolicies, setBucketPolicies] = useState<Record<string, boolean>>({})
   const [togglingBucket, setTogglingBucket] = useState<string | null>(null)
+  const [directoryTree, setDirectoryTree] = useState<TreeNode[]>([])
+  const [isLoadingTree, setIsLoadingTree] = useState(false)
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['buckets'],
     queryFn: async () => {
       const result = await listBuckets()
-      console.log('🔍 ListBuckets API Response:', result)
-      console.log('🔍 Buckets data:', result?.ListAllMyBucketsResult?.Buckets?.Bucket)
-      
+
       // 获取每个 bucket 的权限状态
       const buckets = result?.ListAllMyBucketsResult?.Buckets?.Bucket || []
-      const policies: Record<string, boolean> = {}
-      const creds = JSON.parse(localStorage.getItem('oss_credentials') || '{}')
-      
-      for (const bucket of buckets) {
-        try {
-          const headers = await getSignedHeaders(
-            'GET',
-            `${API_BASE_URL}/${bucket.Name}?policy`,
-            creds.accessKey,
-            creds.secretKey
-          )
-          const response = await axios.get(`${API_BASE_URL}/${bucket.Name}?policy`, { headers })
-          policies[bucket.Name] = response.data?.Statement?.some((s: any) => 
-            s.Effect === 'Allow' && s.Principal === '*' && 
-            (s.Action === 's3:GetObject' || s.Action?.includes('s3:GetObject'))
-          ) || false
-        } catch (err) {
-          policies[bucket.Name] = false
-        }
-      }
-      
+      const policies = Object.fromEntries(await Promise.all(
+        buckets.map(async (bucket: { Name: string }) => [bucket.Name, await getBucketPublicStatus(bucket.Name)] as const)
+      ))
       setBucketPolicies(policies)
       return result
     },
@@ -85,10 +193,6 @@ export default function Buckets() {
   })
 
   const buckets = data?.ListAllMyBucketsResult?.Buckets?.Bucket || []
-  
-  console.log('🎯 Final buckets array:', buckets)
-  console.log('🎯 Is loading:', isLoading)
-  console.log('🎯 Error:', error)
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault()
@@ -119,23 +223,7 @@ export default function Buckets() {
     if (selectedBucket) {
       // 获取 bucket policy 判断是否公开
       const fetchPolicy = async () => {
-        try {
-          const creds = JSON.parse(localStorage.getItem('oss_credentials') || '{}')
-          const headers = await getSignedHeaders(
-            'GET',
-            `${API_BASE_URL}/${selectedBucket.Name}?policy`,
-            creds.accessKey,
-            creds.secretKey
-          )
-          const response = await axios.get(`${API_BASE_URL}/${selectedBucket.Name}?policy`, { headers })
-          // 如果有 policy 且包含公开读，设置为 true
-          setIsPublic(response.data?.Statement?.some((s: any) => 
-            s.Effect === 'Allow' && s.Principal === '*' && 
-            (s.Action === 's3:GetObject' || s.Action?.includes('s3:GetObject'))
-          ) || false)
-        } catch (err) {
-          setIsPublic(false)
-        }
+        setIsPublic(await getBucketPublicStatus(selectedBucket.Name))
       }
       
       // 获取 bucket 设置
@@ -148,8 +236,25 @@ export default function Buckets() {
         }
       }
       
+      // 获取目录树
+      const fetchDirectoryTree = async () => {
+        setIsLoadingTree(true)
+        try {
+          const result = await listAllObjects(selectedBucket.Name)
+          const objects = result?.ListBucketResult?.Contents || []
+          const tree = buildDirectoryTree(objects)
+          setDirectoryTree(tree)
+        } catch (err) {
+          console.error('Failed to load directory tree:', err)
+          setDirectoryTree([])
+        } finally {
+          setIsLoadingTree(false)
+        }
+      }
+      
       fetchPolicy()
       fetchSettings()
+      fetchDirectoryTree()
     }
   }, [selectedBucket])
 
@@ -229,52 +334,14 @@ export default function Buckets() {
                         
                         setTogglingBucket(bucket.Name)
                         try {
-                          const creds = JSON.parse(localStorage.getItem('oss_credentials') || '{}')
                           const isCurrentlyPublic = bucketPolicies[bucket.Name]
-                          
+
                           if (!isCurrentlyPublic) {
-                            // 设置为公开
-                            const policy = {
-                              Version: '2012-10-17',
-                              Statement: [{
-                                Effect: 'Allow',
-                                Principal: '*',
-                                Action: 's3:GetObject',
-                                Resource: `arn:aws:s3:::${bucket.Name}/*`
-                              }]
-                            }
-                            const headers = await getSignedHeaders(
-                              'PUT',
-                              `${API_BASE_URL}/${bucket.Name}?policy`,
-                              creds.accessKey,
-                              creds.secretKey,
-                              JSON.stringify(policy)
-                            )
-                            await axios.put(
-                              `${API_BASE_URL}/${bucket.Name}?policy`,
-                              JSON.stringify(policy),
-                              { 
-                                headers,
-                                validateStatus: (status) => status < 500
-                              }
-                            )
+                            await setBucketPublic(bucket.Name)
                             setBucketPolicies(prev => ({ ...prev, [bucket.Name]: true }))
                             toast.success(`${bucket.Name} 已设为公开`)
                           } else {
-                            // 设置为私有
-                            const headers = await getSignedHeaders(
-                              'DELETE',
-                              `${API_BASE_URL}/${bucket.Name}?policy`,
-                              creds.accessKey,
-                              creds.secretKey
-                            )
-                            await axios.delete(
-                              `${API_BASE_URL}/${bucket.Name}?policy`,
-                              { 
-                                headers,
-                                validateStatus: (status) => status < 500
-                              }
-                            )
+                            await setBucketPrivate(bucket.Name)
                             setBucketPolicies(prev => ({ ...prev, [bucket.Name]: false }))
                             toast.success(`${bucket.Name} 已设为私有`)
                           }
@@ -368,10 +435,10 @@ export default function Buckets() {
                 </label>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded text-sm font-mono text-gray-900 dark:text-white break-all">
-                    ${API_BASE_URL}/{selectedBucket.Name}
+                    {storageEndpoint}/{selectedBucket.Name}
                   </code>
                   <button
-                    onClick={() => copyToClipboard(`${API_BASE_URL}/${selectedBucket.Name}`, 'endpoint')}
+                    onClick={() => copyToClipboard(`${storageEndpoint}/${selectedBucket.Name}`, 'endpoint')}
                     className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
                     title="Copy to clipboard"
                   >
@@ -391,10 +458,10 @@ export default function Buckets() {
                 </label>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded text-sm font-mono text-gray-900 dark:text-white break-all">
-                    s3://{stripProtocol(API_BASE_URL)}/{selectedBucket.Name}
+                    s3://{stripProtocol(storageEndpoint)}/{selectedBucket.Name}
                   </code>
                   <button
-                    onClick={() => copyToClipboard(`s3://${stripProtocol(API_BASE_URL)}/${selectedBucket.Name}`, 's3endpoint')}
+                    onClick={() => copyToClipboard(`s3://${stripProtocol(storageEndpoint)}/${selectedBucket.Name}`, 's3endpoint')}
                     className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
                     title="Copy to clipboard"
                   >
@@ -465,45 +532,15 @@ export default function Buckets() {
                     onClick={async () => {
                       setIsUpdatingPolicy(true)
                       try {
-                        const creds = JSON.parse(localStorage.getItem('oss_credentials') || '{}')
                         if (!isPublic) {
-                          // 设置为公开读
-                          const policy = {
-                            Version: '2012-10-17',
-                            Statement: [{
-                              Effect: 'Allow',
-                              Principal: '*',
-                              Action: 's3:GetObject',
-                              Resource: `arn:aws:s3:::${selectedBucket?.Name}/*`
-                            }]
-                          }
-                          const headers = await getSignedHeaders(
-                            'PUT',
-                            `${API_BASE_URL}/${selectedBucket?.Name}?policy`,
-                            creds.accessKey,
-                            creds.secretKey,
-                            JSON.stringify(policy)
-                          )
-                          await axios.put(
-                            `${API_BASE_URL}/${selectedBucket?.Name}?policy`,
-                            JSON.stringify(policy),
-                            { headers }
-                          )
+                          await setBucketPublic(selectedBucket.Name)
                           setIsPublic(true)
+                          setBucketPolicies(prev => ({ ...prev, [selectedBucket.Name]: true }))
                           toast.success('已设置为公开读')
                         } else {
-                          // 设置为私有（删除 policy）
-                          const headers = await getSignedHeaders(
-                            'DELETE',
-                            `${API_BASE_URL}/${selectedBucket?.Name}?policy`,
-                            creds.accessKey,
-                            creds.secretKey
-                          )
-                          await axios.delete(
-                            `${API_BASE_URL}/${selectedBucket?.Name}?policy`,
-                            { headers }
-                          )
+                          await setBucketPrivate(selectedBucket.Name)
                           setIsPublic(false)
+                          setBucketPolicies(prev => ({ ...prev, [selectedBucket.Name]: false }))
                           toast.success('已设置为私有')
                         }
                       } catch (err: any) {
@@ -556,6 +593,31 @@ export default function Buckets() {
                 </p>
               </div>
 
+              {/* 目录结构 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  目录结构
+                </label>
+                <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded max-h-64 overflow-y-auto">
+                  {isLoadingTree ? (
+                    <div className="flex items-center justify-center py-8 text-gray-500">
+                      <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin mr-2" />
+                      加载中...
+                    </div>
+                  ) : directoryTree.length === 0 ? (
+                    <div className="py-8 text-center text-gray-500 dark:text-gray-400">
+                      存储桶为空
+                    </div>
+                  ) : (
+                    <div className="py-2">
+                      {directoryTree.map((node) => (
+                        <TreeNodeItem key={node.path} node={node} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Usage Example */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -563,10 +625,10 @@ export default function Buckets() {
                 </label>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded text-sm font-mono text-gray-900 dark:text-white break-all">
-                    aws s3 ls s3://{selectedBucket.Name} --endpoint-url=\${API_BASE_URL}
+                    aws s3 ls s3://{selectedBucket.Name} --endpoint-url={storageEndpoint}
                   </code>
                   <button
-                    onClick={() => copyToClipboard(`aws s3 ls s3://${selectedBucket.Name} --endpoint-url=\${API_BASE_URL}`, 'cli')}
+                    onClick={() => copyToClipboard(`aws s3 ls s3://${selectedBucket.Name} --endpoint-url=${storageEndpoint}`, 'cli')}
                     className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
                     title="Copy to clipboard"
                   >

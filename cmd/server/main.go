@@ -20,11 +20,11 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "configs/config.yaml", "config file path")
+	envPath := flag.String("env", "", "path to .env file (default: deployments/.env or .env)")
 	flag.Parse()
 
 	// 加载配置
-	cfg, err := config.Load(*configPath)
+	cfg, err := config.Load(*envPath)
 	if err != nil {
 		fmt.Printf("Failed to load config: %v\n", err)
 		os.Exit(1)
@@ -63,10 +63,12 @@ func main() {
 	}
 
 	// 初始化管理员用户和凭证
-	if err := initAdminUser(repo, cfg); err != nil {
+	bootstrapInfo, err := initAdminUser(repo, cfg)
+	if err != nil {
 		logger.Errorf("Failed to init admin user: %v", err)
 		os.Exit(1)
 	}
+	printBootstrapCredentials(bootstrapInfo, cfg)
 
 	// 创建 API 服务器
 	server := api.NewServer(cfg, storageEngine, repo)
@@ -96,20 +98,32 @@ func main() {
 	logger.Infof("Server stopped")
 }
 
-func initAdminUser(repo metadata.Repository, cfg *config.Config) error {
+type adminBootstrapInfo struct {
+	UserCreated        bool
+	CredentialsCreated bool
+	Username           string
+	Password           string
+	AccessKey          string
+	SecretKey          string
+}
+
+func initAdminUser(repo metadata.Repository, cfg *config.Config) (*adminBootstrapInfo, error) {
 	ctx := context.Background()
+	info := &adminBootstrapInfo{
+		Username: cfg.Auth.RootUser,
+	}
 
 	// 检查管理员用户是否存在
 	user, err := repo.GetUserByUsername(ctx, cfg.Auth.RootUser)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if user == nil {
 		// 创建管理员用户
 		passwordHash, err := auth.HashPassword(cfg.Auth.RootPassword)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		user = &metadata.User{
@@ -119,15 +133,17 @@ func initAdminUser(repo metadata.Repository, cfg *config.Config) error {
 			IsAdmin:      true,
 		}
 		if err := repo.CreateUser(ctx, user); err != nil {
-			return err
+			return nil, err
 		}
+		info.UserCreated = true
+		info.Password = cfg.Auth.RootPassword
 		logger.Infof("Created admin user: %s", user.Username)
 	}
 
 	// 为管理员生成初始凭证
 	credentials, err := repo.GetCredentialsByUserID(ctx, user.ID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if len(credentials) == 0 {
@@ -143,7 +159,7 @@ func initAdminUser(repo metadata.Repository, cfg *config.Config) error {
 			// 生成新凭证
 			accessKey, secretKey, err = auth.GenerateCredentials()
 			if err != nil {
-				return err
+				return nil, err
 			}
 			logger.Infof("Generated new admin credentials")
 
@@ -161,8 +177,11 @@ func initAdminUser(repo metadata.Repository, cfg *config.Config) error {
 			Status:      "active",
 		}
 		if err := repo.CreateCredential(ctx, cred); err != nil {
-			return err
+			return nil, err
 		}
+		info.CredentialsCreated = true
+		info.AccessKey = accessKey
+		info.SecretKey = secretKey
 
 		logger.Infof("Admin credentials:")
 		logger.Infof("  Access Key: %s", accessKey)
@@ -170,7 +189,31 @@ func initAdminUser(repo metadata.Repository, cfg *config.Config) error {
 		logger.Infof("Please save these credentials securely!")
 	}
 
-	return nil
+	return info, nil
+}
+
+func printBootstrapCredentials(info *adminBootstrapInfo, cfg *config.Config) {
+	if info == nil || (!info.UserCreated && !info.CredentialsCreated) {
+		return
+	}
+
+	var lines []string
+	lines = append(lines, "")
+	lines = append(lines, "========== 1103-OSS Bootstrap ==========")
+	if info.UserCreated {
+		lines = append(lines, fmt.Sprintf("Admin Username: %s", info.Username))
+		lines = append(lines, fmt.Sprintf("Admin Password: %s", info.Password))
+	}
+	if info.CredentialsCreated {
+		lines = append(lines, fmt.Sprintf("Access Key: %s", info.AccessKey))
+		lines = append(lines, fmt.Sprintf("Secret Key: %s", info.SecretKey))
+	}
+	lines = append(lines, fmt.Sprintf("API Endpoint: %s", cfg.Server.APIEndpoint))
+	lines = append(lines, "TUI Command: go run ./cmd/tui")
+	lines = append(lines, "========================================")
+	lines = append(lines, "")
+
+	fmt.Fprint(os.Stdout, strings.Join(lines, "\n"))
 }
 
 // saveCredentialsToEnv 将生成的凭证保存到 .env 文件

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Upload, AlertCircle, CheckCircle2, Loader2, Info } from 'lucide-react'
 import toast from 'react-hot-toast'
-import api from '../lib/api'
+import { startMigration } from '../lib/api'
 
 interface MigrationForm {
   sourceEndpoint: string
@@ -23,10 +23,7 @@ export default function Migration() {
   const [detectedService, setDetectedService] = useState<string>('')
 
   const migrationMutation = useMutation({
-    mutationFn: async (data: MigrationForm) => {
-      const response = await api.post('/admin/migration/start', data)
-      return response.data
-    },
+    mutationFn: (data: MigrationForm) => startMigration(data),
     onSuccess: () => {
       toast.success('迁移任务已启动，请稍候查看进度')
       setFormData({

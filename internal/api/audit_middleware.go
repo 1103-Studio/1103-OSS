@@ -94,7 +94,7 @@ func (s *Server) AuditMiddleware() gin.HandlerFunc {
 // parseAction 解析操作类型
 func (s *Server) parseAction(c *gin.Context) (action, resourceType, resourceName string) {
 	method := c.Request.Method
-	path := c.Request.URL.Path
+	path := normalizeRequestPath(c.Request.URL.Path)
 
 	// 跳过认证接口
 	if strings.HasPrefix(path, "/auth/") {
@@ -143,8 +143,7 @@ func (s *Server) parseAction(c *gin.Context) (action, resourceType, resourceName
 		}
 	}
 
-	// API 管理接口
-	if strings.HasPrefix(path, "/api/") {
+	if strings.HasPrefix(path, "/admin/") {
 		if strings.Contains(path, "/users") {
 			switch method {
 			case "POST":
@@ -165,13 +164,22 @@ func (s *Server) parseAction(c *gin.Context) (action, resourceType, resourceName
 		}
 	}
 
+	if strings.HasPrefix(path, "/user/") {
+		if path == "/user/change-password" && method == "POST" {
+			return metadata.ActionUpdateUser, metadata.ResourceTypeUser, "change-password"
+		}
+	}
+
 	return "", "", ""
 }
 
 // extractResourceInfo 提取资源信息
 func (s *Server) extractResourceInfo(c *gin.Context) (bucketName, objectKey string) {
-	path := c.Request.URL.Path
-	if strings.HasPrefix(path, "/") && !strings.HasPrefix(path, "/api/") {
+	path := normalizeRequestPath(c.Request.URL.Path)
+	if strings.HasPrefix(path, "/") &&
+		!strings.HasPrefix(path, "/auth/") &&
+		!strings.HasPrefix(path, "/admin/") &&
+		!strings.HasPrefix(path, "/user/") {
 		parts := strings.Split(strings.Trim(path, "/"), "/")
 		if len(parts) >= 1 {
 			bucketName = parts[0]

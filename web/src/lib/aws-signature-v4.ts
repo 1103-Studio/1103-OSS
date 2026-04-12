@@ -175,10 +175,6 @@ export async function signRequest(params: SignatureParams): Promise<Record<strin
     pathname = urlStr.substring(pathStart)
   }
 
-  // 调试输出
-  console.log('Frontend URL:', urlStr)
-  console.log('Frontend pathname:', pathname)
-
   // 构建规范请求
   const canonicalRequest = [
     method.toUpperCase(),
@@ -188,11 +184,6 @@ export async function signRequest(params: SignatureParams): Promise<Record<strin
     signedHeaders(headers),
     payloadHash
   ].join('\n')
-
-  // 调试输出
-  console.log('Frontend CanonicalRequest:')
-  console.log(canonicalRequest)
-
   // 计算规范请求的哈希
   const canonicalRequestHash = await sha256(canonicalRequest)
 

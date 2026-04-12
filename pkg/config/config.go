@@ -2,52 +2,49 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 
-	"github.com/spf13/viper"
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server"`
-	Storage  StorageConfig  `mapstructure:"storage"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Redis    RedisConfig    `mapstructure:"redis"`
-	Auth     AuthConfig     `mapstructure:"auth"`
-	Logging  LoggingConfig  `mapstructure:"logging"`
-	Limits   LimitsConfig   `mapstructure:"limits"`
+	Server   ServerConfig
+	Storage  StorageConfig
+	Database DatabaseConfig
+	Redis    RedisConfig
+	Auth     AuthConfig
+	Logging  LoggingConfig
+	Limits   LimitsConfig
 }
 
 type ServerConfig struct {
-	Host           string   `mapstructure:"host"`
-	Port           int      `mapstructure:"port"`
-	AdminPort      int      `mapstructure:"admin_port"`
-	AllowedOrigins []string `mapstructure:"allowed_origins"`
-	APIEndpoint    string   `mapstructure:"api_endpoint"`
+	Host           string
+	Port           int
+	AdminPort      int
+	AllowedOrigins []string
+	APIEndpoint    string
 }
 
 type StorageConfig struct {
-	Type        string            `mapstructure:"type"`
-	Local       LocalStorage      `mapstructure:"local"`
-	Distributed DistributedConfig `mapstructure:"distributed"`
+	Type  string
+	Local LocalStorage
 }
 
 type LocalStorage struct {
-	BasePath string `mapstructure:"base_path"`
-}
-
-type DistributedConfig struct {
-	Nodes []string `mapstructure:"nodes"`
+	BasePath string
 }
 
 type DatabaseConfig struct {
-	Host         string `mapstructure:"host"`
-	Port         int    `mapstructure:"port"`
-	User         string `mapstructure:"user"`
-	Password     string `mapstructure:"password"`
-	DBName       string `mapstructure:"dbname"`
-	SSLMode      string `mapstructure:"sslmode"`
-	MaxOpenConns int    `mapstructure:"max_open_conns"`
-	MaxIdleConns int    `mapstructure:"max_idle_conns"`
+	Host         string
+	Port         int
+	User         string
+	Password     string
+	DBName       string
+	SSLMode      string
+	MaxOpenConns int
+	MaxIdleConns int
 }
 
 func (d *DatabaseConfig) DSN() string {
@@ -56,10 +53,10 @@ func (d *DatabaseConfig) DSN() string {
 }
 
 type RedisConfig struct {
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	Password string `mapstructure:"password"`
-	DB       int    `mapstructure:"db"`
+	Host     string
+	Port     int
+	Password string
+	DB       int
 }
 
 func (r *RedisConfig) Addr() string {
@@ -67,50 +64,142 @@ func (r *RedisConfig) Addr() string {
 }
 
 type AuthConfig struct {
-	RootUser         string `mapstructure:"root_user"`
-	RootPassword     string `mapstructure:"root_password"`
-	TokenExpireHours int    `mapstructure:"token_expire_hours"`
-	InitAccessKey    string `mapstructure:"init_access_key"`
-	InitAccessSecret string `mapstructure:"init_access_secret"`
+	RootUser         string
+	RootPassword     string
+	TokenExpireHours int
+	InitAccessKey    string
+	InitAccessSecret string
 }
 
 type LoggingConfig struct {
-	Level    string `mapstructure:"level"`
-	Format   string `mapstructure:"format"`
-	Output   string `mapstructure:"output"`
-	FilePath string `mapstructure:"file_path"`
+	Level    string
+	Format   string
+	Output   string
+	FilePath string
 }
 
 type LimitsConfig struct {
-	MaxObjectSize      int64 `mapstructure:"max_object_size"`
-	MaxPartSize        int64 `mapstructure:"max_part_size"`
-	MinPartSize        int64 `mapstructure:"min_part_size"`
-	MaxParts           int   `mapstructure:"max_parts"`
-	RateLimitPerSecond int   `mapstructure:"rate_limit_per_second"`
+	MaxObjectSize      int64
+	MaxPartSize        int64
+	MinPartSize        int64
+	MaxParts           int
+	RateLimitPerSecond int
 }
 
 var globalConfig *Config
 
-func Load(configPath string) (*Config, error) {
-	viper.SetConfigFile(configPath)
-	viper.SetConfigType("yaml")
+// getEnv 获取环境变量，如果不存在则返回默认值
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
 
-	// 环境变量覆盖
-	viper.SetEnvPrefix("OSS")
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	viper.AutomaticEnv()
+// getEnvInt 获取整数环境变量
+func getEnvInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if i, err := strconv.Atoi(value); err == nil {
+			return i
+		}
+	}
+	return defaultValue
+}
 
-	if err := viper.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("failed to read config: %w", err)
+// getEnvInt64 获取 int64 环境变量
+func getEnvInt64(key string, defaultValue int64) int64 {
+	if value := os.Getenv(key); value != "" {
+		if i, err := strconv.ParseInt(value, 10, 64); err == nil {
+			return i
+		}
+	}
+	return defaultValue
+}
+
+// getEnvSlice 获取字符串切片环境变量（逗号分隔）
+func getEnvSlice(key string, defaultValue []string) []string {
+	if value := os.Getenv(key); value != "" {
+		parts := strings.Split(value, ",")
+		var result []string
+		for _, p := range parts {
+			if trimmed := strings.TrimSpace(p); trimmed != "" {
+				result = append(result, trimmed)
+			}
+		}
+		return result
+	}
+	return defaultValue
+}
+
+// Load 从 .env 文件加载配置
+func Load(envPath string) (*Config, error) {
+	// 尝试加载 .env 文件（如果存在）
+	if envPath != "" {
+		_ = godotenv.Load(envPath)
+	} else {
+		// 默认尝试加载多个位置
+		_ = godotenv.Load("deployments/.env", ".env")
 	}
 
-	var cfg Config
-	if err := viper.Unmarshal(&cfg); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	cfg := &Config{
+		Server: ServerConfig{
+			Host:           getEnv("SERVER_HOST", "0.0.0.0"),
+			Port:           getEnvInt("SERVER_PORT", 9000),
+			AdminPort:      getEnvInt("SERVER_ADMIN_PORT", 9001),
+			AllowedOrigins: getEnvSlice("ALLOWED_ORIGINS", []string{"*"}),
+			APIEndpoint:    getEnv("API_ENDPOINT", ""),
+		},
+		Storage: StorageConfig{
+			Type: getEnv("STORAGE_TYPE", "local"),
+			Local: LocalStorage{
+				BasePath: getEnv("STORAGE_PATH", "/data/oss"),
+			},
+		},
+		Database: DatabaseConfig{
+			Host:         getEnv("DB_HOST", "localhost"),
+			Port:         getEnvInt("DB_PORT", 5432),
+			User:         getEnv("DB_USER", "oss"),
+			Password:     getEnv("DB_PASSWORD", "oss_password"),
+			DBName:       getEnv("DB_NAME", "oss"),
+			SSLMode:      getEnv("DB_SSLMODE", "disable"),
+			MaxOpenConns: getEnvInt("DB_MAX_OPEN_CONNS", 25),
+			MaxIdleConns: getEnvInt("DB_MAX_IDLE_CONNS", 5),
+		},
+		Redis: RedisConfig{
+			Host:     getEnv("REDIS_HOST", "localhost"),
+			Port:     getEnvInt("REDIS_PORT", 6379),
+			Password: getEnv("REDIS_PASSWORD", ""),
+			DB:       getEnvInt("REDIS_DB", 0),
+		},
+		Auth: AuthConfig{
+			RootUser:         getEnv("ROOT_USER", "admin"),
+			RootPassword:     getEnv("ROOT_PASSWORD", "admin123"),
+			TokenExpireHours: getEnvInt("TOKEN_EXPIRE_HOURS", 24),
+			InitAccessKey:    getEnv("INIT_ACCESS_KEY", ""),
+			InitAccessSecret: getEnv("INIT_ACCESS_SECRET", ""),
+		},
+		Logging: LoggingConfig{
+			Level:    getEnv("LOG_LEVEL", "info"),
+			Format:   getEnv("LOG_FORMAT", "json"),
+			Output:   getEnv("LOG_OUTPUT", "stdout"),
+			FilePath: getEnv("LOG_FILE_PATH", "/var/log/oss/server.log"),
+		},
+		Limits: LimitsConfig{
+			MaxObjectSize:      getEnvInt64("MAX_OBJECT_SIZE", 5368709120),
+			MaxPartSize:        getEnvInt64("MAX_PART_SIZE", 104857600),
+			MinPartSize:        getEnvInt64("MIN_PART_SIZE", 5242880),
+			MaxParts:           getEnvInt("MAX_PARTS", 10000),
+			RateLimitPerSecond: getEnvInt("RATE_LIMIT_PER_SECOND", 1000),
+		},
 	}
 
-	globalConfig = &cfg
-	return &cfg, nil
+	// 如果 API_ENDPOINT 未设置，自动生成
+	if cfg.Server.APIEndpoint == "" {
+		cfg.Server.APIEndpoint = fmt.Sprintf("http://localhost:%d", cfg.Server.Port)
+	}
+
+	globalConfig = cfg
+	return cfg, nil
 }
 
 func Get() *Config {

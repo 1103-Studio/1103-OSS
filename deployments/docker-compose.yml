@@ -11,7 +11,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ../scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5432:5432"
+      - "15432:5432"
     networks:
       - 1103-oss-network
     healthcheck:
@@ -28,7 +28,7 @@ services:
     volumes:
       - redis-data:/data
     ports:
-      - "6379:6379"
+      - "16379:6379"
     networks:
       - 1103-oss-network
     healthcheck:
@@ -44,19 +44,21 @@ services:
       dockerfile: deployments/docker/Dockerfile
     container_name: gooss-api
     environment:
-      - OSS_DATABASE_HOST=postgres
-      - OSS_DATABASE_PORT=5432
-      - OSS_DATABASE_USER=oss
-      - OSS_DATABASE_PASSWORD=${DB_PASSWORD:-oss_password}
-      - OSS_DATABASE_DBNAME=oss
-      - OSS_REDIS_HOST=redis
-      - OSS_REDIS_PORT=6379
-      - OSS_STORAGE_LOCAL_BASE_PATH=/data/oss
-      - OSS_AUTH_ROOT_USER=${ROOT_USER:-admin}
-      - OSS_AUTH_ROOT_PASSWORD=${ROOT_PASSWORD:-admin123}
-      - OSS_AUTH_INIT_ACCESS_KEY=${INIT_ACCESS_KEY:-}
-      - OSS_AUTH_INIT_ACCESS_SECRET=${INIT_ACCESS_SECRET:-}
-      - OSS_LOGGING_LEVEL=info
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=oss
+      - DB_PASSWORD=${DB_PASSWORD:-oss_password}
+      - DB_NAME=oss
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STORAGE_PATH=/data/oss
+      - ROOT_USER=${ROOT_USER:-admin}
+      - ROOT_PASSWORD=${ROOT_PASSWORD:-admin123}
+      - INIT_ACCESS_KEY=${INIT_ACCESS_KEY:-}
+      - INIT_ACCESS_SECRET=${INIT_ACCESS_SECRET:-}
+      - LOG_LEVEL=info
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+      - API_ENDPOINT=${API_ENDPOINT:-}
     volumes:
       - oss-data:/data/oss
     ports:
@@ -80,26 +82,28 @@ services:
       dockerfile: deployments/docker/Dockerfile.dev
     container_name: 1103-oss-api-dev
     environment:
-      - OSS_DATABASE_HOST=postgres
-      - OSS_DATABASE_PORT=5432
-      - OSS_DATABASE_USER=oss
-      - OSS_DATABASE_PASSWORD=${DB_PASSWORD:-oss_password}
-      - OSS_DATABASE_DBNAME=oss
-      - OSS_REDIS_HOST=redis
-      - OSS_REDIS_PORT=6379
-      - OSS_STORAGE_LOCAL_BASE_PATH=/data/oss
-      - OSS_AUTH_ROOT_USER=${ROOT_USER:-admin}
-      - OSS_AUTH_ROOT_PASSWORD=${ROOT_PASSWORD:-admin123}
-      - OSS_AUTH_INIT_ACCESS_KEY=${INIT_ACCESS_KEY:-}
-      - OSS_AUTH_INIT_ACCESS_SECRET=${INIT_ACCESS_SECRET:-}
-      - OSS_LOGGING_LEVEL=debug
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=oss
+      - DB_PASSWORD=${DB_PASSWORD:-oss_password}
+      - DB_NAME=oss
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STORAGE_PATH=/data/oss
+      - ROOT_USER=${ROOT_USER:-admin}
+      - ROOT_PASSWORD=${ROOT_PASSWORD:-admin123}
+      - INIT_ACCESS_KEY=${INIT_ACCESS_KEY:-}
+      - INIT_ACCESS_SECRET=${INIT_ACCESS_SECRET:-}
+      - LOG_LEVEL=debug
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+      - API_ENDPOINT=${API_ENDPOINT:-}
     volumes:
       - ..:/app
       - go-cache:/go/pkg/mod
       - oss-data:/data/oss
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "19000:9000"
+      - "19001:9001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -115,8 +119,6 @@ services:
     build:
       context: ..
       dockerfile: deployments/docker/Dockerfile.web
-      args:
-        - VITE_API_URL=${API_URL:-}
     container_name: gooss-web
     ports:
       - "9002:80"
@@ -134,17 +136,52 @@ services:
     image: node:20-alpine
     container_name: 1103-oss-web-dev
     working_dir: /app
-    command: sh -c "echo 'VITE_API_URL=http://localhost:9000' > .env && npm install && npm run dev"
+    command: sh -c "npm install && npm run dev"
     volumes:
       - ../web:/app
       - node-modules:/app/node_modules
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
-      - VITE_API_URL=http://localhost:9000
+      - VITE_API_PROXY_TARGET=http://gooss-api-dev:9000
     networks:
       - 1103-oss-network
     profiles:
+      - dev
+
+  # TUI 管理端
+  gooss-tui:
+    image: golang:1.21-alpine
+    container_name: 1103-oss-tui
+    working_dir: /app
+    command: sh -c "go run ./cmd/tui"
+    stdin_open: true
+    tty: true
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=oss
+      - DB_PASSWORD=${DB_PASSWORD:-oss_password}
+      - DB_NAME=oss
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STORAGE_PATH=/data/oss
+      - ROOT_USER=${ROOT_USER:-admin}
+      - ROOT_PASSWORD=${ROOT_PASSWORD:-admin123}
+      - INIT_ACCESS_KEY=${INIT_ACCESS_KEY:-}
+      - INIT_ACCESS_SECRET=${INIT_ACCESS_SECRET:-}
+      - LOG_LEVEL=info
+      - API_ENDPOINT=${API_ENDPOINT:-}
+    volumes:
+      - ..:/app
+      - go-cache:/go/pkg/mod
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - 1103-oss-network
+    profiles:
+      - tools
       - dev
 
   # Nginx 网关 (可选)

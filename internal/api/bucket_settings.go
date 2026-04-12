@@ -64,6 +64,10 @@ func (s *Server) UpdateBucketSettings(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Bucket not found"})
 		return
 	}
+	if bucket.OwnerID != c.GetInt64("user_id") {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		return
+	}
 
 	// 更新设置
 	bucket.DefaultExpiry = req.DefaultExpiry
@@ -89,6 +93,10 @@ func (s *Server) GetBucketSettings(c *gin.Context) {
 	}
 	if bucket == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Bucket not found"})
+		return
+	}
+	if bucket.OwnerID != c.GetInt64("user_id") {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
 

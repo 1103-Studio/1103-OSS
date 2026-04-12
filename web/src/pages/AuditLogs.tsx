@@ -1,9 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { FileText, Filter, Calendar, User, Activity, AlertCircle, CheckCircle, Clock } from 'lucide-react'
-import axios from 'axios'
-import { getSignedHeaders } from '../lib/aws-signature-v4'
-import { API_BASE_URL } from '../lib/api'
+import { getAuditLogStats, listAuditLogs } from '../lib/api'
 
 interface AuditLog {
   id: number
@@ -30,30 +28,12 @@ export default function AuditLogs() {
 
   const { data: logs, isLoading } = useQuery({
     queryKey: ['audit-logs', filter],
-    queryFn: async () => {
-      const creds = JSON.parse(localStorage.getItem('oss_credentials') || '{}')
-      const params = new URLSearchParams()
-      if (filter.action) params.set('action', filter.action)
-      if (filter.resource_type) params.set('resource_type', filter.resource_type)
-      if (filter.bucket_name) params.set('bucket_name', filter.bucket_name)
-      params.set('limit', filter.limit.toString())
-
-      const url = `${API_BASE_URL}/admin/audit-logs?${params}`
-      const headers = await getSignedHeaders('GET', url, creds.accessKey, creds.secretKey)
-      const response = await axios.get(url, { headers })
-      return response.data.logs || []
-    }
+    queryFn: () => listAuditLogs(filter)
   })
 
   const { data: stats } = useQuery({
     queryKey: ['audit-stats'],
-    queryFn: async () => {
-      const creds = JSON.parse(localStorage.getItem('oss_credentials') || '{}')
-      const url = `${API_BASE_URL}/admin/audit-logs/stats`
-      const headers = await getSignedHeaders('GET', url, creds.accessKey, creds.secretKey)
-      const response = await axios.get(url, { headers })
-      return response.data
-    }
+    queryFn: () => getAuditLogStats()
   })
 
   const getActionIcon = (statusCode: number) => {

@@ -102,6 +102,7 @@ func (h *Handler) CreateBucket(c *gin.Context) {
 		ACL:     "private",
 	}
 	if err := h.repo.CreateBucket(c.Request.Context(), bucket); err != nil {
+		_ = h.storage.DeleteBucket(c.Request.Context(), bucketName)
 		h.sendError(c, http.StatusInternalServerError, response.ErrInternalError, err.Error())
 		return
 	}
@@ -123,6 +124,9 @@ func (h *Handler) HeadBucket(c *gin.Context) {
 		c.Status(http.StatusNotFound)
 		return
 	}
+	if !h.requireBucketOwner(c, bucket) {
+		return
+	}
 
 	c.Header("x-amz-bucket-region", bucket.Region)
 	c.Status(http.StatusOK)
@@ -131,7 +135,6 @@ func (h *Handler) HeadBucket(c *gin.Context) {
 // DeleteBucket DELETE /{bucket} - 删除 Bucket
 func (h *Handler) DeleteBucket(c *gin.Context) {
 	bucketName := c.Param("bucket")
-	userID := c.GetInt64("user_id")
 
 	bucket, err := h.repo.GetBucketByName(c.Request.Context(), bucketName)
 	if err != nil {
@@ -144,8 +147,7 @@ func (h *Handler) DeleteBucket(c *gin.Context) {
 	}
 
 	// 检查权限
-	if bucket.OwnerID != userID {
-		h.sendError(c, http.StatusForbidden, response.ErrAccessDenied, "Access denied")
+	if !h.requireBucketOwner(c, bucket) {
 		return
 	}
 
@@ -188,6 +190,9 @@ func (h *Handler) ListObjects(c *gin.Context) {
 	}
 	if bucket == nil {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Bucket not found")
+		return
+	}
+	if !h.requireBucketOwner(c, bucket) {
 		return
 	}
 
@@ -272,6 +277,9 @@ func (h *Handler) PutObject(c *gin.Context) {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Bucket not found")
 		return
 	}
+	if !h.requireBucketOwner(c, bucket) {
+		return
+	}
 
 	// 获取 Content-Type
 	contentType := c.GetHeader("Content-Type")
@@ -308,6 +316,7 @@ func (h *Handler) PutObject(c *gin.Context) {
 		StoragePath:  objInfo.StoragePath,
 	}
 	if err := h.repo.CreateObject(c.Request.Context(), obj); err != nil {
+		_ = h.storage.Delete(c.Request.Context(), bucketName, key)
 		h.sendError(c, http.StatusInternalServerError, response.ErrInternalError, err.Error())
 		return
 	}
@@ -329,6 +338,9 @@ func (h *Handler) GetObject(c *gin.Context) {
 	}
 	if bucket == nil {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Bucket not found")
+		return
+	}
+	if !h.requireBucketReadAccess(c, bucket) {
 		return
 	}
 
@@ -448,6 +460,9 @@ func (h *Handler) HeadObject(c *gin.Context) {
 		c.Status(http.StatusNotFound)
 		return
 	}
+	if !h.requireBucketReadAccess(c, bucket) {
+		return
+	}
 
 	obj, err := h.repo.GetObject(c.Request.Context(), bucket.ID, key)
 	if err != nil {
@@ -493,6 +508,9 @@ func (h *Handler) DeleteObject(c *gin.Context) {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Bucket not found")
 		return
 	}
+	if !h.requireBucketOwner(c, bucket) {
+		return
+	}
 
 	// 删除存储
 	if err := h.storage.Delete(c.Request.Context(), bucketName, key); err != nil {
@@ -529,11 +547,17 @@ func (h *Handler) CopyObject(c *gin.Context) {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Source bucket not found")
 		return
 	}
+	if !h.requireBucketOwner(c, srcBucketMeta) {
+		return
+	}
 
 	// 验证目标 Bucket
 	dstBucketMeta, err := h.repo.GetBucketByName(c.Request.Context(), dstBucket)
 	if err != nil || dstBucketMeta == nil {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Destination bucket not found")
+		return
+	}
+	if !h.requireBucketOwner(c, dstBucketMeta) {
 		return
 	}
 
@@ -562,6 +586,7 @@ func (h *Handler) CopyObject(c *gin.Context) {
 		StoragePath:  objInfo.StoragePath,
 	}
 	if err := h.repo.CreateObject(c.Request.Context(), obj); err != nil {
+		_ = h.storage.Delete(c.Request.Context(), dstBucket, dstKey)
 		h.sendError(c, http.StatusInternalServerError, response.ErrInternalError, err.Error())
 		return
 	}
@@ -584,6 +609,9 @@ func (h *Handler) CreateMultipartUpload(c *gin.Context) {
 	bucket, err := h.repo.GetBucketByName(c.Request.Context(), bucketName)
 	if err != nil || bucket == nil {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Bucket not found")
+		return
+	}
+	if !h.requireBucketOwner(c, bucket) {
 		return
 	}
 
@@ -630,10 +658,19 @@ func (h *Handler) UploadPart(c *gin.Context) {
 		return
 	}
 
+	bucket, err := h.repo.GetBucketByName(c.Request.Context(), bucketName)
+	if err != nil || bucket == nil {
+		h.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Bucket not found")
+		return
+	}
+
 	// 验证上传任务
 	upload, err := h.repo.GetMultipartUpload(c.Request.Context(), uploadID)
 	if err != nil || upload == nil {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchUpload, "Upload not found")
+		return
+	}
+	if !h.requireMultipartUploadAccess(c, bucket, key, upload) {
 		return
 	}
 
@@ -672,10 +709,16 @@ func (h *Handler) CompleteMultipartUpload(c *gin.Context) {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Bucket not found")
 		return
 	}
+	if !h.requireBucketOwner(c, bucket) {
+		return
+	}
 
 	upload, err := h.repo.GetMultipartUpload(c.Request.Context(), uploadID)
 	if err != nil || upload == nil {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchUpload, "Upload not found")
+		return
+	}
+	if !h.requireMultipartUploadAccess(c, bucket, key, upload) {
 		return
 	}
 
@@ -732,6 +775,7 @@ func (h *Handler) CompleteMultipartUpload(c *gin.Context) {
 		StoragePath:  objInfo.StoragePath,
 	}
 	if err := h.repo.CreateObject(c.Request.Context(), obj); err != nil {
+		_ = h.storage.Delete(c.Request.Context(), bucketName, key)
 		h.sendError(c, http.StatusInternalServerError, response.ErrInternalError, err.Error())
 		return
 	}
@@ -757,9 +801,18 @@ func (h *Handler) AbortMultipartUpload(c *gin.Context) {
 	key = strings.TrimPrefix(key, "/")
 	uploadID := c.Query("uploadId")
 
+	bucket, err := h.repo.GetBucketByName(c.Request.Context(), bucketName)
+	if err != nil || bucket == nil {
+		h.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Bucket not found")
+		return
+	}
+
 	upload, err := h.repo.GetMultipartUpload(c.Request.Context(), uploadID)
 	if err != nil || upload == nil {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchUpload, "Upload not found")
+		return
+	}
+	if !h.requireMultipartUploadAccess(c, bucket, key, upload) {
 		return
 	}
 
@@ -780,9 +833,18 @@ func (h *Handler) ListParts(c *gin.Context) {
 	key = strings.TrimPrefix(key, "/")
 	uploadID := c.Query("uploadId")
 
+	bucket, err := h.repo.GetBucketByName(c.Request.Context(), bucketName)
+	if err != nil || bucket == nil {
+		h.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Bucket not found")
+		return
+	}
+
 	upload, err := h.repo.GetMultipartUpload(c.Request.Context(), uploadID)
 	if err != nil || upload == nil {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchUpload, "Upload not found")
+		return
+	}
+	if !h.requireMultipartUploadAccess(c, bucket, key, upload) {
 		return
 	}
 

@@ -47,19 +47,24 @@ func (s *Server) setupRoutes() {
 	// CORS 中间件
 	s.engine.Use(s.corsMiddleware())
 
+	s.registerRoutes(s.engine)
+	s.registerRoutes(s.engine.Group("/api"))
+}
+
+func (s *Server) registerRoutes(router gin.IRouter) {
 	// 健康检查
-	s.engine.GET("/health", func(c *gin.Context) {
+	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
 	// 认证相关路由（不需要签名）
-	auth := s.engine.Group("/auth")
+	auth := router.Group("/auth")
 	{
 		auth.POST("/login", s.Login)
 	}
 
 	// 用户个人操作路由（需要认证）
-	user := s.engine.Group("/user")
+	user := router.Group("/user")
 	user.Use(s.authMiddleware())
 	user.Use(s.AuditMiddleware())
 	{
@@ -67,8 +72,10 @@ func (s *Server) setupRoutes() {
 	}
 
 	// 用户管理路由（需要管理员权限）
-	admin := s.engine.Group("/admin")
+	admin := router.Group("/admin")
 	admin.Use(s.authMiddleware())
+	admin.Use(s.adminMiddleware())
+	admin.Use(s.AuditMiddleware())
 	{
 		admin.GET("/users", s.ListUsers)
 		admin.POST("/users", s.CreateUser)
@@ -85,7 +92,7 @@ func (s *Server) setupRoutes() {
 	}
 
 	// S3 API 路由组
-	s3Group := s.engine.Group("")
+	s3Group := router.Group("")
 	s3Group.Use(s.authMiddleware())
 	s3Group.Use(s.AuditMiddleware())
 	{
@@ -237,17 +244,19 @@ func (s *Server) corsMiddleware() gin.HandlerFunc {
 // authMiddleware 认证中间件
 func (s *Server) authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		path := normalizeRequestPath(c.Request.URL.Path)
+
 		// 跳过不需要认证的路径
-		if c.Request.URL.Path == "/health" ||
-			strings.HasPrefix(c.Request.URL.Path, "/auth/") {
+		if path == "/health" ||
+			strings.HasPrefix(path, "/auth/") {
 			c.Next()
 			return
 		}
 
 		// 检查是否为公开读访问 (只对 GetObject 生效)
-		if c.Request.Method == "GET" && strings.Count(c.Request.URL.Path, "/") >= 2 {
+		if (c.Request.Method == "GET" || c.Request.Method == "HEAD") && strings.Count(path, "/") >= 2 {
 			// 路径格式: /{bucket}/{key...}
-			parts := strings.SplitN(strings.TrimPrefix(c.Request.URL.Path, "/"), "/", 2)
+			parts := strings.SplitN(strings.TrimPrefix(path, "/"), "/", 2)
 			if len(parts) == 2 {
 				bucketName := parts[0]
 				bucket, err := s.repo.GetBucketByName(c.Request.Context(), bucketName)
@@ -317,6 +326,11 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 		user, err := s.repo.GetUserByID(c.Request.Context(), cred.UserID)
 		if err != nil || user == nil {
 			c.XML(http.StatusForbidden, response.NewError(response.ErrAccessDenied, "User not found", c.Request.URL.Path))
+			c.Abort()
+			return
+		}
+		if user.Status != "active" {
+			c.XML(http.StatusForbidden, response.NewError(response.ErrAccessDenied, "User account is disabled", c.Request.URL.Path))
 			c.Abort()
 			return
 		}

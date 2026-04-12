@@ -20,6 +20,9 @@ func (h *Handler) PutBucketPolicy(c *gin.Context) {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Bucket not found")
 		return
 	}
+	if !h.requireBucketOwner(c, bucket) {
+		return
+	}
 
 	// 读取策略 JSON
 	body, err := io.ReadAll(c.Request.Body)
@@ -54,6 +57,9 @@ func (h *Handler) GetBucketPolicy(c *gin.Context) {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Bucket not found")
 		return
 	}
+	if !h.requireBucketOwner(c, bucket) {
+		return
+	}
 
 	// 获取策略
 	policyData, err := h.repo.GetBucketPolicy(c.Request.Context(), bucket.ID)
@@ -73,6 +79,9 @@ func (h *Handler) DeleteBucketPolicy(c *gin.Context) {
 	bucket, err := h.repo.GetBucketByName(c.Request.Context(), bucketName)
 	if err != nil || bucket == nil {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Bucket not found")
+		return
+	}
+	if !h.requireBucketOwner(c, bucket) {
 		return
 	}
 

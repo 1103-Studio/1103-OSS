@@ -4,15 +4,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useDropzone } from 'react-dropzone'
 import { 
   File, Folder, Upload, Trash2, Download, ChevronRight, 
-  Home, RefreshCw, Share2 
+  Home, RefreshCw, Share2, FolderPlus, X 
 } from 'lucide-react'
-import { listObjects, uploadObject, deleteObject, getPresignedUrl } from '../lib/api'
+import { listObjects, uploadObject, deleteObject, getPresignedUrl, createFolder, deleteFolder } from '../lib/api'
 import toast from 'react-hot-toast'
 
 export default function Objects() {
   const { bucket, '*': path = '' } = useParams()
   const queryClient = useQueryClient()
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
+  const [showCreateFolderModal, setShowCreateFolderModal] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false)
 
   const prefix = path ? `${path}/` : ''
 
@@ -67,6 +70,20 @@ export default function Objects() {
     }
   }
 
+  const handleDeleteFolder = async (folderPrefix: string) => {
+    const folderName = folderPrefix.replace(prefix, '').replace(/\/$/, '')
+    if (confirm(`确定要删除目录 "${folderName}" 及其所有内容吗？`)) {
+      try {
+        await deleteFolder(bucket!, folderPrefix)
+        toast.success(`目录 "${folderName}" 已删除`)
+        refetch()
+      } catch (error) {
+        toast.error('删除目录失败')
+        console.error('Failed to delete folder:', error)
+      }
+    }
+  }
+
   const handleDownload = async (key: string) => {
     try {
       const url = await getPresignedUrl(bucket!, key)
@@ -88,6 +105,34 @@ export default function Objects() {
     }
   }
 
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) {
+      toast.error('请输入目录名称')
+      return
+    }
+
+    // 验证目录名称格式
+    if (newFolderName.includes('/')) {
+      toast.error('目录名称不能包含 /')
+      return
+    }
+
+    setIsCreatingFolder(true)
+    try {
+      const folderPath = prefix + newFolderName
+      await createFolder(bucket!, folderPath)
+      toast.success(`目录 "${newFolderName}" 创建成功`)
+      setShowCreateFolderModal(false)
+      setNewFolderName('')
+      refetch()
+    } catch (error) {
+      toast.error('创建目录失败')
+      console.error('Failed to create folder:', error)
+    } finally {
+      setIsCreatingFolder(false)
+    }
+  }
+
   // Build breadcrumb
   const pathParts = path ? path.split('/').filter(Boolean) : []
   const breadcrumbs = [
@@ -100,29 +145,46 @@ export default function Objects() {
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center text-sm">
-          <Link to="/buckets" className="text-gray-500 hover:text-gray-700">
-            <Home className="w-4 h-4" />
-          </Link>
-          {breadcrumbs.map((crumb, i) => (
-            <span key={crumb.path} className="flex items-center">
-              <ChevronRight className="w-4 h-4 text-gray-400 mx-2" />
-              {i === breadcrumbs.length - 1 ? (
-                <span className="font-medium text-gray-900">{crumb.name}</span>
-              ) : (
-                <Link to={crumb.path} className="text-gray-500 hover:text-gray-700">
-                  {crumb.name}
-                </Link>
-              )}
-            </span>
-          ))}
+      {/* Header with Breadcrumb Navigation */}
+      <div className="mb-6">
+        {/* 当前路径导航 */}
+        <div className="mb-3 px-4 py-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="flex items-center text-sm">
+            <span className="text-gray-500 dark:text-gray-400 mr-2">当前位置:</span>
+            <Link to="/buckets" className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center">
+              <Home className="w-4 h-4" />
+            </Link>
+            {breadcrumbs.map((crumb, i) => (
+              <span key={crumb.path} className="flex items-center">
+                <ChevronRight className="w-4 h-4 text-gray-400 mx-2" />
+                {i === breadcrumbs.length - 1 ? (
+                  <span className="font-semibold text-blue-600 dark:text-blue-400">{crumb.name}</span>
+                ) : (
+                  <Link to={crumb.path} className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline">
+                    {crumb.name}
+                  </Link>
+                )}
+              </span>
+            ))}
+          </div>
         </div>
-        <button onClick={() => refetch()} className="btn btn-secondary">
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Refresh
-        </button>
+        
+        {/* 操作按钮 */}
+        <div className="flex items-center justify-between">
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setShowCreateFolderModal(true)} 
+              className="btn btn-primary"
+            >
+              <FolderPlus className="w-4 h-4 mr-2" />
+              新建目录
+            </button>
+            <button onClick={() => refetch()} className="btn btn-secondary">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Upload Zone */}
@@ -174,19 +236,27 @@ export default function Objects() {
               {prefixes.map((p: { Prefix: string }) => {
                 const folderName = p.Prefix.replace(prefix, '').replace(/\/$/, '')
                 return (
-                  <tr key={p.Prefix} className="hover:bg-gray-50">
+                  <tr key={p.Prefix} className="hover:bg-blue-50 dark:hover:bg-blue-900/20 bg-blue-50/30 dark:bg-blue-900/10">
                     <td className="px-4 py-3">
                       <Link
                         to={`/buckets/${bucket}/${p.Prefix.replace(/\/$/, '')}`}
-                        className="flex items-center text-primary-600 hover:text-primary-700"
+                        className="flex items-center text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
                       >
-                        <Folder className="w-5 h-5 mr-3 text-yellow-500" />
-                        {folderName}/
+                        <Folder className="w-5 h-5 mr-3 text-blue-500 dark:text-blue-400" />
+                        <span className="text-blue-600 dark:text-blue-400">{folderName}/</span>
                       </Link>
                     </td>
                     <td className="px-4 py-3 text-gray-500">-</td>
                     <td className="px-4 py-3 text-gray-500">-</td>
-                    <td className="px-4 py-3"></td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => handleDeleteFolder(p.Prefix)}
+                        className="p-1 text-gray-400 hover:text-red-500"
+                        title="删除目录及其所有内容"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    </td>
                   </tr>
                 )
               })}
@@ -241,6 +311,68 @@ export default function Objects() {
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* 创建目录 Modal */}
+      {showCreateFolderModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                新建目录
+              </h3>
+              <button
+                onClick={() => {
+                  setShowCreateFolderModal(false)
+                  setNewFolderName('')
+                }}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                目录名称
+              </label>
+              <input
+                type="text"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !isCreatingFolder) {
+                    handleCreateFolder()
+                  }
+                }}
+                placeholder="输入目录名称"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                autoFocus
+              />
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                当前路径: {prefix || '/'}
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 bg-gray-50 dark:bg-gray-900 rounded-b-lg">
+              <button
+                onClick={() => {
+                  setShowCreateFolderModal(false)
+                  setNewFolderName('')
+                }}
+                className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                disabled={isCreatingFolder}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleCreateFolder}
+                disabled={isCreatingFolder || !newFolderName.trim()}
+                className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isCreatingFolder ? '创建中...' : '创建'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

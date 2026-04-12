@@ -404,18 +404,18 @@ func (r *PostgresRepository) ListObjects(ctx context.Context, bucketID int64, op
 			break
 		}
 
-		// 处理 delimiter
-		if opts.Delimiter != "" && opts.Prefix != "" {
-			keyWithoutPrefix := strings.TrimPrefix(obj.Key, opts.Prefix)
-			if idx := strings.Index(keyWithoutPrefix, opts.Delimiter); idx >= 0 {
-				prefix := opts.Prefix + keyWithoutPrefix[:idx+1]
-				if !prefixSet[prefix] {
-					prefixSet[prefix] = true
-					result.CommonPrefixes = append(result.CommonPrefixes, prefix)
+			// 处理 delimiter
+			if opts.Delimiter != "" {
+				keyWithoutPrefix := strings.TrimPrefix(obj.Key, opts.Prefix)
+				if idx := strings.Index(keyWithoutPrefix, opts.Delimiter); idx >= 0 {
+					prefix := opts.Prefix + keyWithoutPrefix[:idx+1]
+					if !prefixSet[prefix] {
+						prefixSet[prefix] = true
+						result.CommonPrefixes = append(result.CommonPrefixes, prefix)
+					}
+					continue
 				}
-				continue
 			}
-		}
 
 		result.Objects = append(result.Objects, obj)
 		result.NextMarker = obj.Key

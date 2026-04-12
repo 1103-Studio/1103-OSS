@@ -32,11 +32,16 @@ export default function Layout({ children }: LayoutProps) {
   const navItems = [
     { name: t('dashboard'), path: '/', icon: Monitor },
     { name: t('buckets'), path: '/buckets', icon: FolderOpen },
-    { name: '存储桶迁移', path: '/migration', icon: Upload },
-    { name: 'Audit Logs', path: '/audit-logs', icon: FileText },
     { name: t('settings'), path: '/settings', icon: Settings },
     { name: t('about'), path: '/about', icon: Info },
   ]
+
+  if (credentials?.isAdmin) {
+    navItems.splice(2, 0,
+      { name: '存储桶迁移', path: '/migration', icon: Upload },
+      { name: 'Audit Logs', path: '/audit-logs', icon: FileText }
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
@@ -129,9 +134,11 @@ export default function Layout({ children }: LayoutProps) {
           <div className="flex items-center justify-between">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                {credentials?.accessKey}
+                {credentials?.username || credentials?.accessKey}
               </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Admin</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {credentials?.isAdmin ? 'Administrator' : 'User'}
+              </p>
             </div>
             <button
               onClick={logout}
