@@ -390,6 +390,37 @@ func (s *Server) ListUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, sanitizeUsers(users))
 }
 
+func (s *Server) ListUserCredentials(c *gin.Context) {
+	userID := parseInt64(c.Param("id"))
+	if userID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User ID is required"})
+		return
+	}
+
+	user, err := s.repo.GetUserByID(c.Request.Context(), userID)
+	if err != nil || user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+	if !canManageAdminUser(c, user) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only administrators can view credentials for admin users"})
+		return
+	}
+
+	credentials, err := s.repo.GetCredentialsByUserID(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list credentials"})
+		return
+	}
+
+	items := make([]credentialResponse, 0, len(credentials))
+	for i := range credentials {
+		items = append(items, sanitizeCredential(&credentials[i]))
+	}
+
+	c.JSON(http.StatusOK, items)
+}
+
 // UpdateUserRequest 更新用户请求
 type UpdateUserRequest struct {
 	Password    *string `json:"password,omitempty"`

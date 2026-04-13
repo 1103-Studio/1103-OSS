@@ -217,7 +217,7 @@ export default function AccessControl() {
       <section className="console-hero">
         <Title level={2} style={{ margin: 0 }}>访问控制中心</Title>
         <Paragraph style={{ maxWidth: 760, marginTop: 12, marginBottom: 0 }}>
-          统一治理用户、角色、Access Key 和 Bucket 授权，对齐云厂商对象存储的 IAM 控制台。
+          统一治理 Bucket 授权、桶级治理和权限模板。账号与订阅资源已拆到独立后台页面。
         </Paragraph>
       </section>
 

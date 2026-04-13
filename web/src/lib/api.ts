@@ -581,7 +581,7 @@ export function getCredentials(): StoredCredentials | null {
 
 export function getStorageEndpoint() {
   const credentials = getCredentials()
-  const endpoint = credentials?.publicEndpoint || credentials?.endpoint || getApiEndpoint()
+  const endpoint = credentials?.publicEndpoint || getApiEndpoint()
   return trimTrailingSlash(toAbsoluteUrl(endpoint))
 }
 
@@ -1122,6 +1122,26 @@ export async function updateCredential(id: number, data: {
 export async function deleteCredential(id: number) {
   const response = await signedRequest('DELETE', `/admin/credentials/${id}`)
   return response.data
+}
+
+export async function listCredentials(userId?: number) {
+  const users = await listUsers()
+  const credentialTasks = users
+    .filter((item) => !userId || item.id === userId)
+    .map(async (item) => {
+      try {
+        const response = await signedRequest<CredentialRecord[]>('GET', `/admin/users/${item.id}/credentials`)
+        return (response.data || []).map((credential) => ({
+          ...normalizeCredential(credential),
+          userId: item.id,
+        }))
+      } catch {
+        return [] as CredentialRecord[]
+      }
+    })
+
+  const groups = await Promise.all(credentialTasks)
+  return groups.flat()
 }
 
 export async function listTickets(scope: 'user' | 'admin' = 'user', params?: {

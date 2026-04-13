@@ -9,8 +9,10 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  ProfileOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
+  ShoppingOutlined,
   TeamOutlined,
   ToolOutlined,
   UserOutlined,
@@ -28,8 +30,10 @@ import {
 import type { MenuProps } from 'antd'
 import { useAuth } from '../hooks/useAuth'
 import {
+  ACCOUNT_PAGE_PERMISSIONS,
   IAM_PAGE_PERMISSIONS,
   MIGRATION_PAGE_PERMISSIONS,
+  SUBSCRIPTION_PAGE_PERMISSIONS,
   TICKET_PAGE_PERMISSIONS,
 } from '../lib/permissions'
 import BrandLogo from './BrandLogo'
@@ -49,8 +53,10 @@ export default function Layout({ children }: LayoutProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
+  const canUseAccounts = hasPermission(...ACCOUNT_PAGE_PERMISSIONS)
   const canUseTickets = hasPermission(...TICKET_PAGE_PERMISSIONS)
   const canUseMigration = hasPermission(...MIGRATION_PAGE_PERMISSIONS)
+  const canUseSubscriptions = hasPermission(...SUBSCRIPTION_PAGE_PERMISSIONS)
   const canUseIAM = hasPermission(...IAM_PAGE_PERMISSIONS)
 
   const mainMenuItems = useMemo<MenuProps['items']>(() => {
@@ -77,6 +83,22 @@ export default function Layout({ children }: LayoutProps) {
         key: '/migration',
         icon: <DeploymentUnitOutlined />,
         label: <Link to="/migration">迁移中心</Link>,
+      })
+    }
+
+    if (canUseAccounts) {
+      items.push({
+        key: '/accounts',
+        icon: <ProfileOutlined />,
+        label: <Link to="/accounts">账号管理</Link>,
+      })
+    }
+
+    if (canUseSubscriptions) {
+      items.push({
+        key: '/subscriptions',
+        icon: <ShoppingOutlined />,
+        label: <Link to="/subscriptions">订阅资源</Link>,
       })
     }
 
@@ -118,7 +140,7 @@ export default function Layout({ children }: LayoutProps) {
     )
 
     return items
-  }, [canUseIAM, canUseMigration, canUseTickets, credentials?.isAdmin])
+  }, [canUseAccounts, canUseIAM, canUseMigration, canUseSubscriptions, canUseTickets, credentials?.isAdmin])
 
   const selectedKey = useMemo(() => {
     if (location.pathname.startsWith('/buckets/')) return '/buckets'

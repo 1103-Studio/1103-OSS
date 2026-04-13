@@ -4,8 +4,10 @@ import { Spin } from 'antd'
 import Layout from './components/Layout'
 import { useAuth } from './hooks/useAuth'
 import {
+  ACCOUNT_PAGE_PERMISSIONS,
   IAM_PAGE_PERMISSIONS,
   MIGRATION_PAGE_PERMISSIONS,
+  SUBSCRIPTION_PAGE_PERMISSIONS,
   TICKET_PAGE_PERMISSIONS,
 } from './lib/permissions'
 
@@ -18,6 +20,8 @@ const Login = lazy(() => import('./pages/Login'))
 const AuditLogs = lazy(() => import('./pages/AuditLogs'))
 const Migration = lazy(() => import('./pages/Migration'))
 const AccessControl = lazy(() => import('./pages/AccessControl'))
+const Accounts = lazy(() => import('./pages/Accounts'))
+const Subscriptions = lazy(() => import('./pages/Subscriptions'))
 const Tickets = lazy(() => import('./pages/Tickets'))
 const Tester = lazy(() => import('./pages/Tester'))
 const AccessDenied = lazy(() => import('./pages/AccessDenied'))
@@ -66,6 +70,8 @@ export default function App() {
           <Route path="/buckets" element={<Buckets />} />
           <Route path="/buckets/:bucket/*" element={<Objects />} />
           <Route path="/migration" element={<PermissionRoute permissions={MIGRATION_PAGE_PERMISSIONS}><Migration /></PermissionRoute>} />
+          <Route path="/accounts" element={<PermissionRoute permissions={ACCOUNT_PAGE_PERMISSIONS}><Accounts /></PermissionRoute>} />
+          <Route path="/subscriptions" element={<PermissionRoute permissions={SUBSCRIPTION_PAGE_PERMISSIONS}><Subscriptions /></PermissionRoute>} />
           <Route path="/iam" element={<AdminRoute><AccessControl /></AdminRoute>} />
           <Route path="/tickets" element={<PermissionRoute permissions={TICKET_PAGE_PERMISSIONS}><Tickets /></PermissionRoute>} />
           <Route path="/tester" element={<Tester />} />

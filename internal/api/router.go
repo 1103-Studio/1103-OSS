@@ -93,6 +93,7 @@ func (s *Server) registerRoutes(router gin.IRouter) {
 	{
 		admin.GET("/users", s.requirePermission(PermUserManage), s.ListUsers)
 		admin.POST("/users", s.requirePermission(PermUserManage), s.CreateUser)
+		admin.GET("/users/:id/credentials", s.requirePermission(PermCredentialManage), s.ListUserCredentials)
 		admin.PUT("/users/:id", s.requirePermission(PermUserManage), s.UpdateUser)
 		admin.DELETE("/users/:id", s.requirePermission(PermUserManage), s.DeleteUser)
 		admin.POST("/credentials", s.requirePermission(PermCredentialManage), s.CreateCredential)

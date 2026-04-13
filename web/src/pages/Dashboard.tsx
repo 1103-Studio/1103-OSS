@@ -4,8 +4,10 @@ import {
   AuditOutlined,
   DeploymentUnitOutlined,
   FolderOpenOutlined,
+  ProfileOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
+  ShoppingOutlined,
   TeamOutlined,
   ToolOutlined,
 } from '@ant-design/icons'
@@ -13,8 +15,10 @@ import { Button, Card, Col, Empty, Row, Space, Statistic, Tag, Typography } from
 import { getMySubscriptionProfile, listBuckets } from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
 import {
+  ACCOUNT_PAGE_PERMISSIONS,
   IAM_PAGE_PERMISSIONS,
   MIGRATION_PAGE_PERMISSIONS,
+  SUBSCRIPTION_PAGE_PERMISSIONS,
   TICKET_PAGE_PERMISSIONS,
 } from '../lib/permissions'
 
@@ -31,7 +35,9 @@ export default function Dashboard() {
     queryFn: getMySubscriptionProfile,
   })
 
+  const canUseAccounts = hasPermission(...ACCOUNT_PAGE_PERMISSIONS)
   const canUseMigration = hasPermission(...MIGRATION_PAGE_PERMISSIONS)
+  const canUseSubscriptions = hasPermission(...SUBSCRIPTION_PAGE_PERMISSIONS)
   const canUseTickets = hasPermission(...TICKET_PAGE_PERMISSIONS)
   const canUseIAM = hasPermission(...IAM_PAGE_PERMISSIONS)
   const canUseAudit = !!credentials?.isAdmin
@@ -48,6 +54,15 @@ export default function Dashboard() {
       extra: `${buckets.length} 个 Bucket`,
     },
     {
+      key: 'accounts',
+      title: '账号管理',
+      desc: '管理用户、角色和 Access Key。',
+      to: '/accounts',
+      enabled: canUseAccounts,
+      icon: <ProfileOutlined />,
+      extra: canUseAccounts ? '可用' : '无权限',
+    },
+    {
       key: 'migration',
       title: '迁移中心',
       desc: '填写 OSS 地址和凭证，发起数据迁移任务。',
@@ -55,6 +70,15 @@ export default function Dashboard() {
       enabled: canUseMigration,
       icon: <DeploymentUnitOutlined />,
       extra: canUseMigration ? '可用' : '无权限',
+    },
+    {
+      key: 'subscriptions',
+      title: '订阅资源',
+      desc: '管理订阅档位、兑换码和资源包发放。',
+      to: '/subscriptions',
+      enabled: canUseSubscriptions,
+      icon: <ShoppingOutlined />,
+      extra: canUseSubscriptions ? '可用' : '无权限',
     },
     {
       key: 'iam',
