@@ -76,6 +76,7 @@ func TestNormalizeAndValidateSourceEndpoint(t *testing.T) {
 }
 
 func init() {
+	gin.SetMode(gin.TestMode)
 	_ = logger.Init("error", "console", "stdout", "")
 }
 
@@ -165,8 +166,6 @@ func (s *migrationJobRepoStub) UpdateMigrationJob(ctx context.Context, job *meta
 func TestListMigrationJobsReturnsEmptyArray(t *testing.T) {
 	t.Parallel()
 
-	gin.SetMode(gin.TestMode)
-
 	handler := &MigrationHandler{
 		repo: &migrationListRepoStub{},
 	}
@@ -200,8 +199,6 @@ func TestListMigrationJobsReturnsEmptyArray(t *testing.T) {
 
 func TestCancelMigrationMarksQueuedJobCancelled(t *testing.T) {
 	t.Parallel()
-
-	gin.SetMode(gin.TestMode)
 
 	repo := &migrationJobRepoStub{
 		job: &metadata.MigrationJob{
@@ -241,8 +238,6 @@ func TestCancelMigrationMarksQueuedJobCancelled(t *testing.T) {
 
 func TestCancelMigrationRejectsFinishedJob(t *testing.T) {
 	t.Parallel()
-
-	gin.SetMode(gin.TestMode)
 
 	repo := &migrationJobRepoStub{
 		job: &metadata.MigrationJob{
