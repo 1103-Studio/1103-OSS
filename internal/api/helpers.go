@@ -22,8 +22,8 @@ type sessionInfo struct {
 }
 
 const (
-	sessionTTL        = 24 * time.Hour
-	sessionDBTimeout  = 5 * time.Second
+	sessionTTL       = 24 * time.Hour
+	sessionDBTimeout = 5 * time.Second
 )
 
 func normalizeRequestPath(path string) string {

@@ -9,19 +9,19 @@ import (
 )
 
 const (
-	PermUserManage       = "user:manage"
-	PermCredentialManage = "credential:manage"
-	PermRoleManage       = "role:manage"
-	PermBucketManage     = "bucket:manage"
-	PermBucketRead       = "bucket:read"
-	PermBucketWrite      = "bucket:write"
-	PermBucketAssign     = "bucket:assign"
-	PermBucketPolicy     = "bucket:policy"
-	PermBucketQuota      = "bucket:quota"
-	PermBucketTraffic    = "bucket:traffic"
-	PermTicketCreate     = "ticket:create"
-	PermTicketRead       = "ticket:read"
-	PermTicketManage     = "ticket:manage"
+	PermUserManage         = "user:manage"
+	PermCredentialManage   = "credential:manage"
+	PermRoleManage         = "role:manage"
+	PermBucketManage       = "bucket:manage"
+	PermBucketRead         = "bucket:read"
+	PermBucketWrite        = "bucket:write"
+	PermBucketAssign       = "bucket:assign"
+	PermBucketPolicy       = "bucket:policy"
+	PermBucketQuota        = "bucket:quota"
+	PermBucketTraffic      = "bucket:traffic"
+	PermTicketCreate       = "ticket:create"
+	PermTicketRead         = "ticket:read"
+	PermTicketManage       = "ticket:manage"
 	PermSubscriptionManage = "subscription:manage"
 	PermSubscriptionRead   = "subscription:read"
 	PermRedemptionManage   = "redemption:manage"
@@ -29,19 +29,19 @@ const (
 )
 
 var allowedPermissionSet = map[string]struct{}{
-	PermUserManage:       {},
-	PermCredentialManage: {},
-	PermRoleManage:       {},
-	PermBucketManage:     {},
-	PermBucketRead:       {},
-	PermBucketWrite:      {},
-	PermBucketAssign:     {},
-	PermBucketPolicy:     {},
-	PermBucketQuota:      {},
-	PermBucketTraffic:    {},
-	PermTicketCreate:     {},
-	PermTicketRead:       {},
-	PermTicketManage:     {},
+	PermUserManage:         {},
+	PermCredentialManage:   {},
+	PermRoleManage:         {},
+	PermBucketManage:       {},
+	PermBucketRead:         {},
+	PermBucketWrite:        {},
+	PermBucketAssign:       {},
+	PermBucketPolicy:       {},
+	PermBucketQuota:        {},
+	PermBucketTraffic:      {},
+	PermTicketCreate:       {},
+	PermTicketRead:         {},
+	PermTicketManage:       {},
 	PermSubscriptionManage: {},
 	PermSubscriptionRead:   {},
 	PermRedemptionManage:   {},

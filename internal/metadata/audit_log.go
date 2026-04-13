@@ -50,13 +50,13 @@ const (
 
 // Resource types
 const (
-	ResourceTypeBucket     = "BUCKET"
-	ResourceTypeObject     = "OBJECT"
-	ResourceTypeUser       = "USER"
-	ResourceTypeRole       = "ROLE"
-	ResourceTypeCredential = "CREDENTIAL"
-	ResourceTypePolicy     = "POLICY"
-	ResourceTypeTicket     = "TICKET"
+	ResourceTypeBucket       = "BUCKET"
+	ResourceTypeObject       = "OBJECT"
+	ResourceTypeUser         = "USER"
+	ResourceTypeRole         = "ROLE"
+	ResourceTypeCredential   = "CREDENTIAL"
+	ResourceTypePolicy       = "POLICY"
+	ResourceTypeTicket       = "TICKET"
 	ResourceTypeBucketAccess = "BUCKET_ACCESS"
 )
 

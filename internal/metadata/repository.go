@@ -67,51 +67,51 @@ type Role struct {
 }
 
 type SubscriptionPlan struct {
-	ID                int64
-	Name              string
-	Code              string
-	Description       string
-	StorageBytes      int64
-	TrafficBytes      int64
-	ObjectQuota       int64
-	DurationDays      int
-	PriceCents        int64
-	Status            string
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ID           int64
+	Name         string
+	Code         string
+	Description  string
+	StorageBytes int64
+	TrafficBytes int64
+	ObjectQuota  int64
+	DurationDays int
+	PriceCents   int64
+	Status       string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type ResourcePackCode struct {
-	ID                int64
-	PlanID            int64
-	Code              string
-	Label             string
-	StorageBytes      int64
-	TrafficBytes      int64
-	ObjectQuota       int64
-	DurationDays      int
-	Status            string
-	RedeemedByUserID  *int64
-	RedeemedAt        *time.Time
-	ExpiresAt         *time.Time
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ID               int64
+	PlanID           int64
+	Code             string
+	Label            string
+	StorageBytes     int64
+	TrafficBytes     int64
+	ObjectQuota      int64
+	DurationDays     int
+	Status           string
+	RedeemedByUserID *int64
+	RedeemedAt       *time.Time
+	ExpiresAt        *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type UserSubscription struct {
-	ID                int64
-	UserID            int64
-	PlanID            *int64
-	ResourceCodeID    *int64
-	Source            string
-	Status            string
-	StorageBytes      int64
-	TrafficBytes      int64
-	ObjectQuota       int64
-	StartedAt         time.Time
-	ExpiresAt         *time.Time
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ID             int64
+	UserID         int64
+	PlanID         *int64
+	ResourceCodeID *int64
+	Source         string
+	Status         string
+	StorageBytes   int64
+	TrafficBytes   int64
+	ObjectQuota    int64
+	StartedAt      time.Time
+	ExpiresAt      *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type SubscriptionProfile struct {

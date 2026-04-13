@@ -33,29 +33,29 @@ type LoginRequest struct {
 
 // LoginResponse 登录响应
 type LoginResponse struct {
-	AccessKey    string          `json:"accessKey"`
-	SessionToken string          `json:"sessionToken"`
-	Endpoint     string          `json:"endpoint"`
-	Username     string          `json:"username"`
-	DisplayName  string          `json:"displayName"`
-	IsAdmin      bool            `json:"isAdmin"`
+	AccessKey    string                       `json:"accessKey"`
+	SessionToken string                       `json:"sessionToken"`
+	Endpoint     string                       `json:"endpoint"`
+	Username     string                       `json:"username"`
+	DisplayName  string                       `json:"displayName"`
+	IsAdmin      bool                         `json:"isAdmin"`
 	Subscription metadata.SubscriptionProfile `json:"subscription"`
-	Roles        []metadata.Role `json:"roles"`
-	Permissions  []string        `json:"permissions"`
+	Roles        []metadata.Role              `json:"roles"`
+	Permissions  []string                     `json:"permissions"`
 }
 
 type userResponse struct {
-	ID          int64           `json:"id"`
-	Username    string          `json:"username"`
-	DisplayName string          `json:"displayName"`
-	Email       string          `json:"email"`
-	Status      string          `json:"status"`
-	IsAdmin     bool            `json:"isAdmin"`
+	ID           int64                        `json:"id"`
+	Username     string                       `json:"username"`
+	DisplayName  string                       `json:"displayName"`
+	Email        string                       `json:"email"`
+	Status       string                       `json:"status"`
+	IsAdmin      bool                         `json:"isAdmin"`
 	Subscription metadata.SubscriptionProfile `json:"subscription"`
-	Roles       []metadata.Role `json:"roles"`
-	Permissions []string        `json:"permissions"`
-	CreatedAt   time.Time       `json:"createdAt"`
-	UpdatedAt   time.Time       `json:"updatedAt"`
+	Roles        []metadata.Role              `json:"roles"`
+	Permissions  []string                     `json:"permissions"`
+	CreatedAt    time.Time                    `json:"createdAt"`
+	UpdatedAt    time.Time                    `json:"updatedAt"`
 }
 
 type credentialResponse struct {
@@ -70,17 +70,17 @@ type credentialResponse struct {
 
 func sanitizeUser(user *metadata.User) userResponse {
 	return userResponse{
-		ID:          user.ID,
-		Username:    user.Username,
-		DisplayName: user.DisplayName,
-		Email:       user.Email,
-		Status:      user.Status,
-		IsAdmin:     user.IsAdmin,
+		ID:           user.ID,
+		Username:     user.Username,
+		DisplayName:  user.DisplayName,
+		Email:        user.Email,
+		Status:       user.Status,
+		IsAdmin:      user.IsAdmin,
 		Subscription: user.Subscription,
-		Roles:       user.Roles,
-		Permissions: user.Permissions,
-		CreatedAt:   user.CreatedAt,
-		UpdatedAt:   user.UpdatedAt,
+		Roles:        user.Roles,
+		Permissions:  user.Permissions,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
 	}
 }
 

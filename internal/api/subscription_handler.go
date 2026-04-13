@@ -83,15 +83,15 @@ type subscriptionPlanRequest struct {
 }
 
 type resourcePackCodeRequest struct {
-	PlanID           *int64  `json:"planId"`
-	Label            string  `json:"label"`
-	Code             string  `json:"code"`
-	StorageBytes     *int64  `json:"storageBytes"`
-	TrafficBytes     *int64  `json:"trafficBytes"`
-	ObjectQuota      *int64  `json:"objectQuota"`
-	DurationDays     *int    `json:"durationDays"`
-	ExpiresAt        *string `json:"expiresAt"`
-	Quantity         int     `json:"quantity"`
+	PlanID       *int64  `json:"planId"`
+	Label        string  `json:"label"`
+	Code         string  `json:"code"`
+	StorageBytes *int64  `json:"storageBytes"`
+	TrafficBytes *int64  `json:"trafficBytes"`
+	ObjectQuota  *int64  `json:"objectQuota"`
+	DurationDays *int    `json:"durationDays"`
+	ExpiresAt    *string `json:"expiresAt"`
+	Quantity     int     `json:"quantity"`
 }
 
 type redeemCodeRequest struct {
@@ -199,14 +199,14 @@ func createSubscriptionFromCode(ctx context.Context, repo metadata.Repository, u
 	startedAt := time.Now()
 	expiresAt := startedAt.Add(time.Duration(item.DurationDays) * 24 * time.Hour)
 	subscription := &metadata.UserSubscription{
-		UserID:         userID,
-		Source:         "redeem_code",
-		Status:         "active",
-		StorageBytes:   item.StorageBytes,
-		TrafficBytes:   item.TrafficBytes,
-		ObjectQuota:    item.ObjectQuota,
-		StartedAt:      startedAt,
-		ExpiresAt:      &expiresAt,
+		UserID:       userID,
+		Source:       "redeem_code",
+		Status:       "active",
+		StorageBytes: item.StorageBytes,
+		TrafficBytes: item.TrafficBytes,
+		ObjectQuota:  item.ObjectQuota,
+		StartedAt:    startedAt,
+		ExpiresAt:    &expiresAt,
 	}
 	if item.PlanID > 0 {
 		subscription.PlanID = &item.PlanID
