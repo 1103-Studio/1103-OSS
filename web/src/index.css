@@ -1,33 +1,551 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+:root {
+  color-scheme: light;
+  color: #1f2329;
+  background: #f5f7fa;
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-@layer components {
-  .btn {
-    @apply px-4 py-2 rounded-lg font-medium transition-colors duration-200;
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #f5f7fa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.console-shell {
+  min-height: 100vh;
+  background: #f5f7fa;
+}
+
+.console-main-shell {
+  min-height: calc(100vh - 52px);
+}
+
+.console-content {
+  padding: 16px;
+}
+
+.console-content-aliyun {
+  background: #f5f7fa;
+}
+
+.console-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.console-topbar {
+  height: 52px;
+  padding: 0 16px;
+  border-bottom: 1px solid #e6e7eb;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.console-topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.console-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.console-brand-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, #ff8b25 0%, #ff5f05 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 8px 18px rgba(255, 106, 0, 0.18);
+}
+
+.console-brand-mark::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 6px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.02));
+}
+
+.console-brand-mark-core {
+  position: relative;
+  z-index: 1;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.console-brand-copy {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.console-brand-name {
+  color: #1f2329;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+
+.console-brand-subtitle {
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.console-brand-compact .console-brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+
+.console-brand-compact .console-brand-name {
+  font-size: 16px;
+}
+
+.console-brand-compact .console-brand-subtitle {
+  font-size: 12px;
+}
+
+.console-sidebar {
+  border-right: 1px solid #e6e7eb;
+  background: #fff;
+}
+
+.console-sidebar-shell {
+  height: 100%;
+  background: #fff;
+}
+
+.console-sidebar-block {
+  padding: 12px 0;
+}
+
+.console-sidebar-heading {
+  padding: 0 16px 8px;
+  color: #1f2329;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.console-sidebar-divider {
+  border-top: 1px solid #eef0f3;
+  margin: 0 16px;
+}
+
+.console-hero {
+  border: 1px solid #e6e7eb;
+  border-radius: 4px;
+  background: #fff;
+  padding: 16px;
+  box-shadow: none;
+}
+
+.console-hero p {
+  color: #73777d;
+}
+
+.console-metrics {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.console-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.console-card-meta {
+  color: #73777d;
+  font-size: 12px;
+}
+
+.console-mono {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.console-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.console-toolbar-form {
+  flex: 1 1 320px;
+}
+
+.console-toolbar-form .ant-form {
+  width: 100%;
+}
+
+.console-upload-dragger.ant-upload-wrapper .ant-upload-drag {
+  background: #fafafa;
+  border: 1px dashed #d7dce3;
+  border-radius: 4px;
+  padding: 20px 16px;
+}
+
+.console-upload-dragger.ant-upload-wrapper .ant-upload-drag:hover {
+  border-color: #91caff;
+  background: #f7fbff;
+}
+
+.aliyun-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.aliyun-breadcrumb {
+  color: #8c8f94;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.aliyun-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.aliyun-dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.88fr) minmax(300px, 0.82fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.aliyun-main-column,
+.aliyun-side-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.aliyun-card-headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.aliyun-scene-card .ant-card-body,
+.aliyun-data-card .ant-card-body,
+.aliyun-tools-card .ant-card-body,
+.aliyun-side-card .ant-card-body {
+  padding: 16px;
+}
+
+.aliyun-scene-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.aliyun-step-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 140px;
+  padding: 12px;
+  border: 1px solid #edf0f4;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.aliyun-step-index {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #d7dce3;
+  border-radius: 50%;
+  color: #1677ff;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.aliyun-step-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 72px;
+}
+
+.aliyun-info-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid #dbeafe;
+  background: #f5f9ff;
+  color: #4b5563;
+  font-size: 12px;
+}
+
+.aliyun-stat-card .ant-card-body {
+  min-height: 98px;
+  padding: 12px 14px;
+}
+
+.aliyun-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  border-top: 1px solid #edf0f4;
+}
+
+.aliyun-tool-panel {
+  min-height: 170px;
+  padding: 16px 18px 8px 0;
+  border-right: 1px solid #edf0f4;
+}
+
+.aliyun-tool-panel:last-child {
+  border-right: none;
+  padding-right: 0;
+}
+
+.aliyun-tool-title {
+  margin-bottom: 8px;
+  color: #1f2329;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.aliyun-health-panel {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.aliyun-health-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.aliyun-placeholder-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 8px;
+}
+
+.aliyun-placeholder-bar {
+  height: 34px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #f2f3f5 0%, #fafafa 100%);
+}
+
+.aliyun-placeholder-bar.active::after {
+  content: '';
+  display: block;
+  width: 12px;
+  height: 12px;
+  margin: 11px auto 0;
+  border-radius: 50%;
+  background: #1677ff;
+}
+
+.aliyun-bucket-manage {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.aliyun-bucket-empty {
+  min-height: 150px;
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  color: #8c8f94;
+  border: 1px dashed #e6e7eb;
+  background: #fafafa;
+}
+
+.aliyun-list-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  background: #eff6ff;
+  color: #1677ff;
+  display: grid;
+  place-items: center;
+}
+
+.aliyun-current-user {
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid #edf0f4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashboard-home {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dashboard-overview-card .ant-card-body {
+  padding: 18px 20px;
+}
+
+.dashboard-entry-card {
+  height: 100%;
+}
+
+.dashboard-entry-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1677ff;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+}
+
+.dashboard-bucket-card {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dashboard-bucket-card:hover,
+.dashboard-entry-card:hover {
+  border-color: #91caff;
+  box-shadow: 0 6px 18px rgba(22, 119, 255, 0.08);
+}
+
+.ant-card {
+  border: 1px solid #e6e7eb;
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.ant-card .ant-card-head {
+  min-height: 46px;
+  padding: 0 16px;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.ant-card .ant-card-head-title {
+  padding: 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ant-btn {
+  font-size: 12px;
+}
+
+.ant-statistic .ant-statistic-title {
+  color: #73777d;
+  font-size: 12px;
+}
+
+.ant-statistic .ant-statistic-content {
+  color: #1f2329;
+  font-size: 24px;
+}
+
+@media (max-width: 1400px) {
+  .aliyun-scene-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  
-  .btn-primary {
-    @apply bg-primary-600 text-white hover:bg-primary-700;
+
+  .aliyun-tool-grid {
+    grid-template-columns: 1fr;
   }
-  
-  .btn-secondary {
-    @apply bg-gray-100 text-gray-700 hover:bg-gray-200;
+
+  .aliyun-tool-panel {
+    border-right: none;
+    border-bottom: 1px solid #edf0f4;
+    padding-right: 0;
   }
-  
-  .btn-danger {
-    @apply bg-red-600 text-white hover:bg-red-700;
+
+  .aliyun-tool-panel:last-child {
+    border-bottom: none;
   }
-  
-  .input {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+}
+
+@media (max-width: 1200px) {
+  .console-metrics,
+  .aliyun-dashboard-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  
-  .card {
-    @apply bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700;
+}
+
+@media (max-width: 992px) {
+  .aliyun-dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .console-brand {
+    gap: 8px;
+  }
+
+  .console-brand-name {
+    font-size: 14px;
+  }
+
+  .console-brand-subtitle {
+    font-size: 11px;
+  }
+
+  .console-content {
+    padding: 12px;
+  }
+
+  .console-metrics,
+  .aliyun-scene-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .console-toolbar {
+    flex-direction: column;
+  }
+
+  .console-toolbar-form {
+    width: 100%;
+  }
+
+  .console-topbar {
+    padding: 0 12px;
   }
 }

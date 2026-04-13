@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gooss/server/internal/metadata"
 	"github.com/gooss/server/internal/util"
 	"github.com/gooss/server/pkg/response"
 )
@@ -64,6 +65,10 @@ func (s *Server) UpdateBucketSettings(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Bucket not found"})
 		return
 	}
+	if !canManageBucketSettings(c, s.repo, bucket) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		return
+	}
 
 	// 更新设置
 	bucket.DefaultExpiry = req.DefaultExpiry
@@ -91,8 +96,30 @@ func (s *Server) GetBucketSettings(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Bucket not found"})
 		return
 	}
+	if !canManageBucketSettings(c, s.repo, bucket) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"default_expiry": bucket.DefaultExpiry,
 	})
+}
+
+func canManageBucketSettings(c *gin.Context, repo metadata.Repository, bucket *metadata.Bucket) bool {
+	if bucket == nil {
+		return false
+	}
+	userID := c.GetInt64("user_id")
+	if userID == 0 {
+		return false
+	}
+	if c.GetBool("is_admin") || bucket.OwnerID == userID || hasPermission(c, PermBucketManage) || hasPermission(c, PermBucketQuota) {
+		return true
+	}
+	access, err := repo.GetBucketAccess(c.Request.Context(), bucket.ID, userID)
+	if err != nil || access == nil {
+		return false
+	}
+	return access.Permission == "admin"
 }
