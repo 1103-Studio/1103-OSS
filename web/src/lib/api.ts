@@ -1,14 +1,14 @@
 import axios, { type AxiosRequestConfig } from 'axios'
-import { getSignedHeaders, sha256 } from './aws-signature-v4'
 
 export interface StoredCredentials {
   accessKey: string
-  secretKey: string
+  sessionToken: string
   endpoint: string
   publicEndpoint?: string
   username?: string
   displayName?: string
   isAdmin?: boolean
+  subscription?: SubscriptionProfileRecord
   roles?: RoleRecord[]
   permissions?: string[]
 }
@@ -27,15 +27,71 @@ export interface UserRecord {
   email?: string
   status: string
   isAdmin: boolean
+  subscription?: SubscriptionProfileRecord
   roles?: RoleRecord[]
   permissions?: string[]
+}
+
+export interface UserSubscriptionRecord {
+  id: number
+  userId: number
+  planId?: number | null
+  resourceCodeId?: number | null
+  source: string
+  status: string
+  storageBytes: number
+  trafficBytes: number
+  objectQuota: number
+  startedAt: string
+  expiresAt?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SubscriptionProfileRecord {
+  activePlans: UserSubscriptionRecord[]
+  totalStorageBytes: number
+  totalTrafficBytes: number
+  totalObjectQuota: number
+  expiresAt?: string | null
+}
+
+export interface SubscriptionPlanRecord {
+  id: number
+  name: string
+  code: string
+  description: string
+  storageBytes: number
+  trafficBytes: number
+  objectQuota: number
+  durationDays: number
+  priceCents: number
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ResourcePackCodeRecord {
+  id: number
+  planId: number
+  code: string
+  label: string
+  storageBytes: number
+  trafficBytes: number
+  objectQuota: number
+  durationDays: number
+  status: string
+  redeemedByUserId?: number | null
+  redeemedAt?: string | null
+  expiresAt?: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 export interface CredentialRecord {
   id: number
   userId: number
   accessKey: string
-  secretKey: string
   description?: string
   status: string
   createdAt: string
@@ -159,6 +215,24 @@ export interface AuditStatsResponse {
   bucket_operations?: number
 }
 
+export interface MigrationJobRecord {
+  id: number
+  userId: number
+  sourceEndpoint: string
+  region: string
+  status: string
+  currentBucket?: string
+  currentObject?: string
+  totalBuckets: number
+  totalObjects: number
+  completedObjects: number
+  errorCount: number
+  lastError?: string
+  startedAt: string
+  updatedAt: string
+  completedAt?: string | null
+}
+
 interface BucketPolicyStatement {
   Effect: string
   Principal: string | Record<string, string>
@@ -182,10 +256,30 @@ interface MigrationPayload {
   sourceEndpoint: string
   accessKey: string
   secretKey: string
-  region: string
+}
+
+function normalizeMigrationJob(value: any): MigrationJobRecord {
+  return {
+    id: readField<number>(value, 'id', 'ID') || 0,
+    userId: readField<number>(value, 'userId', 'UserID') || 0,
+    sourceEndpoint: readField<string>(value, 'sourceEndpoint', 'SourceEndpoint') || '',
+    region: readField<string>(value, 'region', 'Region') || '',
+    status: readField<string>(value, 'status', 'Status') || '',
+    currentBucket: readField<string>(value, 'currentBucket', 'CurrentBucket') || '',
+    currentObject: readField<string>(value, 'currentObject', 'CurrentObject') || '',
+    totalBuckets: readField<number>(value, 'totalBuckets', 'TotalBuckets') || 0,
+    totalObjects: readField<number>(value, 'totalObjects', 'TotalObjects') || 0,
+    completedObjects: readField<number>(value, 'completedObjects', 'CompletedObjects') || 0,
+    errorCount: readField<number>(value, 'errorCount', 'ErrorCount') || 0,
+    lastError: readField<string>(value, 'lastError', 'LastError') || '',
+    startedAt: readField<string>(value, 'startedAt', 'StartedAt') || '',
+    updatedAt: readField<string>(value, 'updatedAt', 'UpdatedAt') || '',
+    completedAt: readField<string | null>(value, 'completedAt', 'CompletedAt') ?? null,
+  }
 }
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0'])
+const CREDENTIALS_KEY = 'oss_credentials'
 
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, '')
@@ -215,8 +309,76 @@ function normalizeUser(value: any): UserRecord {
     email: readField<string>(value, 'email', 'Email') || '',
     status: readField<string>(value, 'status', 'Status') || '',
     isAdmin: !!readField<boolean>(value, 'isAdmin', 'IsAdmin'),
+    subscription: normalizeSubscriptionProfile(readField<any>(value, 'subscription', 'Subscription')),
     roles: (readField<any[]>(value, 'roles', 'Roles') || []).map(normalizeRole),
     permissions: readField<string[]>(value, 'permissions', 'Permissions') || [],
+  }
+}
+
+function normalizeUserSubscription(value: any): UserSubscriptionRecord {
+  return {
+    id: readField<number>(value, 'id', 'ID') || 0,
+    userId: readField<number>(value, 'userId', 'UserID') || 0,
+    planId: readField<number | null>(value, 'planId', 'PlanID') ?? null,
+    resourceCodeId: readField<number | null>(value, 'resourceCodeId', 'ResourceCodeID') ?? null,
+    source: readField<string>(value, 'source', 'Source') || '',
+    status: readField<string>(value, 'status', 'Status') || '',
+    storageBytes: readField<number>(value, 'storageBytes', 'StorageBytes') || 0,
+    trafficBytes: readField<number>(value, 'trafficBytes', 'TrafficBytes') || 0,
+    objectQuota: readField<number>(value, 'objectQuota', 'ObjectQuota') || 0,
+    startedAt: readField<string>(value, 'startedAt', 'StartedAt') || '',
+    expiresAt: readField<string | null>(value, 'expiresAt', 'ExpiresAt') ?? null,
+    createdAt: readField<string>(value, 'createdAt', 'CreatedAt') || '',
+    updatedAt: readField<string>(value, 'updatedAt', 'UpdatedAt') || '',
+  }
+}
+
+function normalizeSubscriptionProfile(value: any): SubscriptionProfileRecord | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined
+  }
+  return {
+    activePlans: (readField<any[]>(value, 'activePlans', 'ActivePlans') || []).map(normalizeUserSubscription),
+    totalStorageBytes: readField<number>(value, 'totalStorageBytes', 'TotalStorageBytes') || 0,
+    totalTrafficBytes: readField<number>(value, 'totalTrafficBytes', 'TotalTrafficBytes') || 0,
+    totalObjectQuota: readField<number>(value, 'totalObjectQuota', 'TotalObjectQuota') || 0,
+    expiresAt: readField<string | null>(value, 'expiresAt', 'ExpiresAt') ?? null,
+  }
+}
+
+function normalizeSubscriptionPlan(value: any): SubscriptionPlanRecord {
+  return {
+    id: readField<number>(value, 'id', 'ID') || 0,
+    name: readField<string>(value, 'name', 'Name') || '',
+    code: readField<string>(value, 'code', 'Code') || '',
+    description: readField<string>(value, 'description', 'Description') || '',
+    storageBytes: readField<number>(value, 'storageBytes', 'StorageBytes') || 0,
+    trafficBytes: readField<number>(value, 'trafficBytes', 'TrafficBytes') || 0,
+    objectQuota: readField<number>(value, 'objectQuota', 'ObjectQuota') || 0,
+    durationDays: readField<number>(value, 'durationDays', 'DurationDays') || 0,
+    priceCents: readField<number>(value, 'priceCents', 'PriceCents') || 0,
+    status: readField<string>(value, 'status', 'Status') || '',
+    createdAt: readField<string>(value, 'createdAt', 'CreatedAt') || '',
+    updatedAt: readField<string>(value, 'updatedAt', 'UpdatedAt') || '',
+  }
+}
+
+function normalizeResourcePackCode(value: any): ResourcePackCodeRecord {
+  return {
+    id: readField<number>(value, 'id', 'ID') || 0,
+    planId: readField<number>(value, 'planId', 'PlanID') || 0,
+    code: readField<string>(value, 'code', 'Code') || '',
+    label: readField<string>(value, 'label', 'Label') || '',
+    storageBytes: readField<number>(value, 'storageBytes', 'StorageBytes') || 0,
+    trafficBytes: readField<number>(value, 'trafficBytes', 'TrafficBytes') || 0,
+    objectQuota: readField<number>(value, 'objectQuota', 'ObjectQuota') || 0,
+    durationDays: readField<number>(value, 'durationDays', 'DurationDays') || 0,
+    status: readField<string>(value, 'status', 'Status') || '',
+    redeemedByUserId: readField<number | null>(value, 'redeemedByUserId', 'RedeemedByUserID') ?? null,
+    redeemedAt: readField<string | null>(value, 'redeemedAt', 'RedeemedAt') ?? null,
+    expiresAt: readField<string | null>(value, 'expiresAt', 'ExpiresAt') ?? null,
+    createdAt: readField<string>(value, 'createdAt', 'CreatedAt') || '',
+    updatedAt: readField<string>(value, 'updatedAt', 'UpdatedAt') || '',
   }
 }
 
@@ -284,7 +446,6 @@ function normalizeCredential(value: any): CredentialRecord {
     id: readField<number>(value, 'id', 'ID') || 0,
     userId: readField<number>(value, 'userId', 'UserID') || 0,
     accessKey: readField<string>(value, 'accessKey', 'AccessKey') || '',
-    secretKey: readField<string>(value, 'secretKey', 'SecretKey') || '',
     description: readField<string>(value, 'description', 'Description') || '',
     status: readField<string>(value, 'status', 'Status') || '',
     createdAt: readField<string>(value, 'createdAt', 'CreatedAt') || '',
@@ -399,15 +560,21 @@ export function getApiEndpoint(path = '') {
 }
 
 export function getCredentials(): StoredCredentials | null {
-  const stored = localStorage.getItem('oss_credentials')
+  const stored = sessionStorage.getItem(CREDENTIALS_KEY) || localStorage.getItem(CREDENTIALS_KEY)
   if (!stored) {
     return null
   }
 
   try {
-    return JSON.parse(stored) as StoredCredentials
+    const parsed = JSON.parse(stored) as StoredCredentials
+    if (!sessionStorage.getItem(CREDENTIALS_KEY)) {
+      sessionStorage.setItem(CREDENTIALS_KEY, stored)
+      localStorage.removeItem(CREDENTIALS_KEY)
+    }
+    return parsed
   } catch {
-    localStorage.removeItem('oss_credentials')
+    sessionStorage.removeItem(CREDENTIALS_KEY)
+    localStorage.removeItem(CREDENTIALS_KEY)
     return null
   }
 }
@@ -423,34 +590,16 @@ const api = axios.create({
 })
 
 async function generateAuthHeader(
-  method: string,
-  path: string,
-  body?: unknown,
-  additionalHeaders?: Record<string, string>
+  _method: string,
+  _path: string,
+  _body?: unknown,
+  _additionalHeaders?: Record<string, string>
 ) {
   const credentials = getCredentials()
-  if (!credentials) {
+  if (!credentials?.sessionToken) {
     return {}
   }
-
-  try {
-    const headers = await getSignedHeaders(
-      method,
-      getApiEndpoint(path),
-      credentials.accessKey,
-      credentials.secretKey,
-      body,
-      additionalHeaders
-    )
-
-    delete headers.Host
-    delete headers.host
-
-    return headers
-  } catch (error) {
-    console.error('Failed to generate signature:', error)
-    return {}
-  }
+  return { Authorization: `Bearer ${credentials.sessionToken}` }
 }
 
 async function signedRequest<T = any>(
@@ -530,37 +679,6 @@ function parseListObjectsXML(xmlString: string): ListObjectsResponse {
   }
 }
 
-function parseDuration(duration: string): number {
-  const regex = /(\d+)([wdhms])/g
-  let totalSeconds = 0
-  let match: RegExpExecArray | null
-
-  while ((match = regex.exec(duration)) !== null) {
-    const value = parseInt(match[1], 10)
-    const unit = match[2]
-
-    switch (unit) {
-      case 'w':
-        totalSeconds += value * 7 * 24 * 3600
-        break
-      case 'd':
-        totalSeconds += value * 24 * 3600
-        break
-      case 'h':
-        totalSeconds += value * 3600
-        break
-      case 'm':
-        totalSeconds += value * 60
-        break
-      case 's':
-        totalSeconds += value
-        break
-    }
-  }
-
-  return totalSeconds || 604800
-}
-
 function buildPublicReadPolicy(bucket: string): BucketPolicy {
   return {
     Version: '2012-10-17',
@@ -587,12 +705,19 @@ export async function loginUser(username: string, password: string) {
   const response = await api.post<StoredCredentials>('/auth/login', { username, password })
   return {
     ...response.data,
+    subscription: normalizeSubscriptionProfile((response.data as any).subscription || (response.data as any).Subscription),
     displayName: response.data.displayName || (response.data as any).DisplayName || '',
     roles: (response.data.roles || (response.data as any).Roles || []).map(normalizeRole),
     permissions: response.data.permissions || (response.data as any).Permissions || [],
     endpoint: getApiEndpoint(),
     publicEndpoint: resolvePublicEndpoint(response.data?.endpoint),
+    sessionToken: response.data.sessionToken || (response.data as any).SessionToken || '',
   }
+}
+
+export async function logoutUser() {
+  const response = await signedRequest('POST', '/auth/logout')
+  return response.data
 }
 
 export async function changePassword(oldPassword: string, newPassword: string) {
@@ -760,9 +885,119 @@ export async function startMigration(data: MigrationPayload) {
   return response.data
 }
 
+export async function listMigrationJobs(limit = 20): Promise<MigrationJobRecord[]> {
+  try {
+    const response = await signedRequest<{ jobs: any[] }>('GET', `/admin/migration/jobs?limit=${limit}`)
+    return (response.data.jobs || []).map(normalizeMigrationJob)
+  } catch (error: any) {
+    if (error?.response?.status === 500) {
+      return []
+    }
+    throw error
+  }
+}
+
+export async function getMigrationJob(id: number): Promise<MigrationJobRecord> {
+  const response = await signedRequest<{ job: any }>('GET', `/admin/migration/jobs/${id}`)
+  return normalizeMigrationJob(response.data.job)
+}
+
+export async function cancelMigrationJob(id: number) {
+  const response = await signedRequest('POST', `/admin/migration/jobs/${id}/cancel`)
+  return response.data
+}
+
 export async function listUsers() {
   const response = await signedRequest<UserRecord[]>('GET', '/admin/users')
   return (response.data || []).map(normalizeUser)
+}
+
+export async function listSubscriptionPlans(includeDisabled = true) {
+  const suffix = includeDisabled ? '' : '?active=true'
+  const response = await signedRequest<{ plans: any[] }>('GET', `/admin/subscription/plans${suffix}`)
+  return (response.data.plans || []).map(normalizeSubscriptionPlan)
+}
+
+export async function listPublicSubscriptionPlans() {
+  const response = await signedRequest<{ plans: any[] }>('GET', '/user/subscription/plans')
+  return (response.data.plans || []).map(normalizeSubscriptionPlan)
+}
+
+export async function createSubscriptionPlan(data: {
+  name: string
+  code: string
+  description?: string
+  storageBytes: number
+  trafficBytes: number
+  objectQuota: number
+  durationDays: number
+  priceCents: number
+  status: string
+}) {
+  const response = await signedRequest<{ plan: any }>('POST', '/admin/subscription/plans', data)
+  return normalizeSubscriptionPlan(response.data.plan)
+}
+
+export async function updateSubscriptionPlan(id: number, data: {
+  name: string
+  code: string
+  description?: string
+  storageBytes: number
+  trafficBytes: number
+  objectQuota: number
+  durationDays: number
+  priceCents: number
+  status: string
+}) {
+  const response = await signedRequest<{ plan: any }>('PUT', `/admin/subscription/plans/${id}`, data)
+  return normalizeSubscriptionPlan(response.data.plan)
+}
+
+export async function listResourcePackCodes(limit = 100) {
+  const response = await signedRequest<{ codes: any[] }>('GET', `/admin/resource-pack-codes?limit=${limit}`)
+  return (response.data.codes || []).map(normalizeResourcePackCode)
+}
+
+export async function createResourcePackCodes(data: {
+  planId?: number
+  label?: string
+  code?: string
+  storageBytes?: number
+  trafficBytes?: number
+  objectQuota?: number
+  durationDays?: number
+  expiresAt?: string
+  quantity?: number
+}) {
+  const response = await signedRequest<{ codes: any[] }>('POST', '/admin/resource-pack-codes', data)
+  return (response.data.codes || []).map(normalizeResourcePackCode)
+}
+
+export async function getMySubscriptionProfile() {
+  try {
+    const response = await signedRequest<{ profile: any }>('GET', '/user/subscription/profile')
+    return normalizeSubscriptionProfile(response.data.profile)
+  } catch (error: any) {
+    if (error?.response?.status === 500) {
+      return {
+        activePlans: [],
+        totalStorageBytes: 0,
+        totalTrafficBytes: 0,
+        totalObjectQuota: 0,
+        expiresAt: null,
+      }
+    }
+    throw error
+  }
+}
+
+export async function redeemResourcePackCode(code: string) {
+  const response = await signedRequest<{ profile?: any; subscription?: any; code?: any }>('POST', '/user/subscription/redeem', { code })
+  return {
+    profile: normalizeSubscriptionProfile(response.data.profile),
+    subscription: response.data.subscription ? normalizeUserSubscription(response.data.subscription) : undefined,
+    code: response.data.code ? normalizeResourcePackCode(response.data.code) : undefined,
+  }
 }
 
 export async function createUser(data: {
@@ -945,87 +1180,16 @@ export async function createTicketMessage(id: number, data: {
 }
 
 export async function getPresignedUrl(bucket: string, key: string, expiresInSeconds?: number) {
-  if (!expiresInSeconds) {
-    try {
-      const settings = await getBucketSettings(bucket)
-      expiresInSeconds = parseDuration(settings.default_expiry || '7d')
-    } catch {
-      expiresInSeconds = 604800
-    }
+  const params = new URLSearchParams({
+    bucket,
+    key,
+    method: 'GET',
+  })
+  if (expiresInSeconds) {
+    params.set('expiresInSeconds', String(expiresInSeconds))
   }
-
-  const credentials = getCredentials()
-  if (!credentials) {
-    throw new Error('No credentials')
-  }
-
-  const endpoint = getStorageEndpoint()
-  const encodedKey = key.split('/').map((segment) => encodeURIComponent(segment)).join('/')
-  const path = `/${bucket}/${encodedKey}`
-
-  const now = new Date()
-  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
-  const dateStamp = amzDate.slice(0, 8)
-  const region = 'us-east-1'
-  const service = 's3'
-  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`
-  const fileName = key.split('/').pop() || 'download'
-
-  const params: Record<string, string> = {
-    'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
-    'X-Amz-Credential': `${credentials.accessKey}/${credentialScope}`,
-    'X-Amz-Date': amzDate,
-    'X-Amz-Expires': String(expiresInSeconds),
-    'X-Amz-SignedHeaders': 'host',
-    'response-content-disposition': `attachment;filename="${encodeURIComponent(fileName)}"`,
-  }
-
-  const canonicalQueryString = Object.keys(params)
-    .sort()
-    .map((paramKey) => `${encodeURIComponent(paramKey)}=${encodeURIComponent(params[paramKey])}`)
-    .join('&')
-
-  const canonicalRequest = [
-    'GET',
-    path,
-    canonicalQueryString,
-    `host:${new URL(endpoint).host}\n`,
-    'host',
-    'UNSIGNED-PAYLOAD',
-  ].join('\n')
-
-  const canonicalRequestHash = await sha256(canonicalRequest)
-  const stringToSign = [
-    'AWS4-HMAC-SHA256',
-    amzDate,
-    credentialScope,
-    canonicalRequestHash,
-  ].join('\n')
-
-  const encoder = new TextEncoder()
-  const signHmac = async (rawKey: BufferSource, message: string) =>
-    crypto.subtle.sign(
-      'HMAC',
-      await crypto.subtle.importKey(
-        'raw',
-        rawKey,
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign']
-      ),
-      encoder.encode(message)
-    )
-
-  const kDate = await signHmac(encoder.encode(`AWS4${credentials.secretKey}`), dateStamp)
-  const kRegion = await signHmac(kDate, region)
-  const kService = await signHmac(kRegion, service)
-  const kSigning = await signHmac(kService, 'aws4_request')
-  const signatureBytes = await signHmac(kSigning, stringToSign)
-  const signature = Array.from(new Uint8Array(signatureBytes))
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
-
-  return `${endpoint}${path}?${canonicalQueryString}&X-Amz-Signature=${signature}`
+  const response = await signedRequest<{ url: string }>('GET', `/user/presign?${params.toString()}`)
+  return response.data.url
 }
 
 export function getObjectUrl(bucket: string, key: string) {

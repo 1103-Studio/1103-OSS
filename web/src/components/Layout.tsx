@@ -1,166 +1,194 @@
+import { useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { 
-  FolderOpen, 
-  Settings, 
-  LogOut,
-  Database,
-  Sun,
-  Moon,
-  Monitor,
-  Globe,
-  Info,
-  FileText,
-  Upload,
-  Shield,
-  LifeBuoy
-} from 'lucide-react'
+import {
+  AuditOutlined,
+  DashboardOutlined,
+  DeploymentUnitOutlined,
+  FolderOpenOutlined,
+  InfoCircleOutlined,
+  LogoutOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  SafetyCertificateOutlined,
+  SettingOutlined,
+  TeamOutlined,
+  ToolOutlined,
+  UserOutlined,
+} from '@ant-design/icons'
+import {
+  Avatar,
+  Button,
+  Drawer,
+  Grid,
+  Layout as AntLayout,
+  Menu,
+  Space,
+  Typography,
+} from 'antd'
+import type { MenuProps } from 'antd'
 import { useAuth } from '../hooks/useAuth'
-import { useTheme } from '../hooks/useTheme'
-import { useLanguage } from '../hooks/useLanguage'
-import { useState } from 'react'
+import BrandLogo from './BrandLogo'
+
+const { Header, Sider, Content } = AntLayout
+const { Text } = Typography
+const { useBreakpoint } = Grid
 
 interface LayoutProps {
   children: React.ReactNode
 }
 
 export default function Layout({ children }: LayoutProps) {
+  const { credentials, logout, hasPermission } = useAuth()
   const location = useLocation()
-  const { logout, credentials } = useAuth()
-  const { theme, setTheme } = useTheme()
-  const { language, setLanguage, t } = useLanguage()
-  const [showThemeMenu, setShowThemeMenu] = useState(false)
-  const [showLangMenu, setShowLangMenu] = useState(false)
+  const screens = useBreakpoint()
+  const [collapsed, setCollapsed] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
-  const navItems = [
-    { name: t('dashboard'), path: '/', icon: Monitor },
-    { name: t('buckets'), path: '/buckets', icon: FolderOpen },
-    { name: '工单', path: '/tickets', icon: LifeBuoy },
-    { name: t('settings'), path: '/settings', icon: Settings },
-    { name: t('about'), path: '/about', icon: Info },
-  ]
+  const canUseTickets = hasPermission('ticket:create', 'ticket:read', 'ticket:manage')
+  const canUseMigration = hasPermission('bucket:manage')
+  const canUseIAM = hasPermission('user:manage', 'credential:manage', 'role:manage', 'bucket:manage', 'bucket:assign', 'bucket:quota', 'bucket:traffic', 'bucket:policy')
 
-  if (credentials?.isAdmin) {
-    navItems.splice(2, 0,
-      { name: '访问控制', path: '/iam', icon: Shield },
-      { name: '存储桶迁移', path: '/migration', icon: Upload },
-      { name: 'Audit Logs', path: '/audit-logs', icon: FileText }
+  const mainMenuItems = useMemo<MenuProps['items']>(() => {
+    const items: MenuProps['items'] = [
+      {
+        key: '/',
+        icon: <DashboardOutlined />,
+        label: <Link to="/">概览</Link>,
+      },
+      {
+        key: '/buckets',
+        icon: <FolderOpenOutlined />,
+        label: <Link to="/buckets">Bucket 列表</Link>,
+      },
+      {
+        key: '/tester',
+        icon: <ToolOutlined />,
+        label: <Link to="/tester">测试器</Link>,
+      },
+    ]
+
+    if (canUseMigration) {
+      items.push({
+        key: '/migration',
+        icon: <DeploymentUnitOutlined />,
+        label: <Link to="/migration">迁移中心</Link>,
+      })
+    }
+
+    if (canUseTickets) {
+      items.push({
+        key: '/tickets',
+        icon: <TeamOutlined />,
+        label: <Link to="/tickets">任务工单</Link>,
+      })
+    }
+
+    if (canUseIAM) {
+      items.push({
+        key: '/iam',
+        icon: <SafetyCertificateOutlined />,
+        label: <Link to="/iam">访问控制</Link>,
+      })
+    }
+
+    if (credentials?.isAdmin) {
+      items.push({
+        key: '/audit-logs',
+        icon: <AuditOutlined />,
+        label: <Link to="/audit-logs">审计日志</Link>,
+      })
+    }
+
+    items.push(
+      {
+        key: '/settings',
+        icon: <SettingOutlined />,
+        label: <Link to="/settings">设置</Link>,
+      },
+      {
+        key: '/about',
+        icon: <InfoCircleOutlined />,
+        label: <Link to="/about">关于</Link>,
+      },
     )
-  }
+
+    return items
+  }, [canUseIAM, canUseMigration, canUseTickets, credentials?.isAdmin])
+
+  const selectedKey = useMemo(() => {
+    if (location.pathname.startsWith('/buckets/')) return '/buckets'
+    return location.pathname
+  }, [location.pathname])
+
+  const sidebar = (
+    <div className="console-sidebar-shell">
+      <div className="console-sidebar-block">
+        <Menu
+          mode="inline"
+          selectedKeys={[selectedKey]}
+          items={mainMenuItems}
+          onClick={() => setDrawerOpen(false)}
+          style={{ borderInlineEnd: 'none' }}
+        />
+      </div>
+    </div>
+  )
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-        {/* Logo */}
-        <div className="h-16 flex items-center px-6 border-b border-gray-200 bg-primary-600">
-          <Database className="w-8 h-8 text-white" />
-          <span className="ml-3 text-xl font-bold text-white">1103-OSS</span>
-        </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 px-4 py-6 space-y-1">
-          {navItems.map((item) => {
-            const isActive = location.pathname === item.path || 
-              (item.path !== '/' && location.pathname.startsWith(item.path))
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                  isActive
-                    ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400'
-                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                }`}
-              >
-                <item.icon className="w-5 h-5" />
-                <span className="font-medium">{item.name}</span>
+    <AntLayout className="console-shell console-shell-aliyun">
+      {!screens.lg ? (
+        <>
+          <Header className="console-topbar">
+            <Space>
+              <Button type="text" icon={<MenuUnfoldOutlined />} onClick={() => setDrawerOpen(true)} />
+              <Link to="/" className="console-topbar-brand" aria-label="MaxIO 控制台">
+                <BrandLogo compact />
               </Link>
-            )
-          })}
-        </nav>
+            </Space>
+            <Space>
+              <Avatar icon={<UserOutlined />} />
+              <Button type="text" icon={<LogoutOutlined />} onClick={() => logout()} />
+            </Space>
+          </Header>
+          <Drawer placement="left" open={drawerOpen} onClose={() => setDrawerOpen(false)} width={280} styles={{ body: { padding: 0 } }}>
+            {sidebar}
+          </Drawer>
+        </>
+      ) : (
+        <>
+          <Header className="console-topbar">
+            <Space size={16}>
+              <Button
+                type="text"
+                icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                onClick={() => setCollapsed((value) => !value)}
+              />
+              <Link to="/" className="console-topbar-brand" aria-label="MaxIO 控制台">
+                <BrandLogo compact />
+              </Link>
+            </Space>
+            <Space size={16}>
+              <Text type="secondary">{credentials?.displayName || credentials?.username || credentials?.accessKey}</Text>
+              <Avatar icon={<UserOutlined />} />
+              <Button type="text" icon={<LogoutOutlined />} onClick={() => logout()} />
+            </Space>
+          </Header>
+          <AntLayout className="console-main-shell">
+            <Sider collapsed={collapsed} width={264} theme="light" trigger={null} className="console-sidebar">
+              {sidebar}
+            </Sider>
+            <Content className="console-content console-content-aliyun">
+              <div className="console-page">{children}</div>
+            </Content>
+          </AntLayout>
+        </>
+      )}
 
-        {/* Theme & Language Controls */}
-        <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 space-y-2">
-          {/* Theme Switcher */}
-          <div className="relative">
-            <button
-              onClick={() => setShowThemeMenu(!showThemeMenu)}
-              className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-            >
-              <span className="flex items-center gap-2">
-                {theme === 'light' && <Sun className="w-4 h-4" />}
-                {theme === 'dark' && <Moon className="w-4 h-4" />}
-                {theme === 'system' && <Monitor className="w-4 h-4" />}
-                <span>{t('theme')}</span>
-              </span>
-            </button>
-            {showThemeMenu && (
-              <div className="absolute bottom-full left-0 mb-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
-                <button onClick={() => { setTheme('light'); setShowThemeMenu(false) }} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200">
-                  <Sun className="w-4 h-4" /> {t('light')}
-                </button>
-                <button onClick={() => { setTheme('dark'); setShowThemeMenu(false) }} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200">
-                  <Moon className="w-4 h-4" /> {t('dark')}
-                </button>
-                <button onClick={() => { setTheme('system'); setShowThemeMenu(false) }} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200">
-                  <Monitor className="w-4 h-4" /> {t('system')}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Language Switcher */}
-          <div className="relative">
-            <button
-              onClick={() => setShowLangMenu(!showLangMenu)}
-              className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-            >
-              <span className="flex items-center gap-2">
-                <Globe className="w-4 h-4" />
-                <span>{language === 'zh' ? '中文' : 'English'}</span>
-              </span>
-            </button>
-            {showLangMenu && (
-              <div className="absolute bottom-full left-0 mb-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
-                <button onClick={() => { setLanguage('zh'); setShowLangMenu(false) }} className="w-full px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200">
-                  中文
-                </button>
-                <button onClick={() => { setLanguage('en'); setShowLangMenu(false) }} className="w-full px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200">
-                  English
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* User Info & Actions */}
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                {credentials?.username || credentials?.accessKey}
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                {credentials?.isAdmin ? 'Administrator' : 'User'}
-              </p>
-            </div>
-            <button
-              onClick={logout}
-              className="ml-2 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-              title={t('logout')}
-            >
-              <LogOut className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main content */}
-      <main className="flex-1 overflow-auto">
-        <div className="p-8">
-          {children}
-        </div>
-      </main>
-    </div>
+      {!screens.lg && (
+        <Content className="console-content console-content-aliyun">
+          <div className="console-page">{children}</div>
+        </Content>
+      )}
+    </AntLayout>
   )
 }

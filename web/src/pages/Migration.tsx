@@ -1,291 +1,264 @@
-import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { Upload, AlertCircle, CheckCircle2, Loader2, Info } from 'lucide-react'
-import toast from 'react-hot-toast'
-import { startMigration } from '../lib/api'
+import { useMemo, useState } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import {
+  CheckCircleOutlined,
+  CloudSyncOutlined,
+  ExclamationCircleOutlined,
+  PauseCircleOutlined,
+} from '@ant-design/icons'
+import { Alert, App, Button, Card, Col, Descriptions, Form, Input, Progress, Row, Space, Table, Tag, Typography } from 'antd'
+import { cancelMigrationJob, getMigrationJob, listMigrationJobs, startMigration, type MigrationJobRecord } from '../lib/api'
 
-interface MigrationForm {
-  sourceEndpoint: string
-  accessKey: string
-  secretKey: string
-  region: string
+const { Text } = Typography
+
+function detectServiceType(endpoint: string) {
+  const lower = endpoint.toLowerCase()
+  if (lower.includes('aliyun') || lower.includes('oss-')) return '阿里云 OSS'
+  if (lower.includes('myqcloud') || lower.includes('cos.')) return '腾讯云 COS'
+  if (lower.includes('amazonaws.com')) return 'AWS S3'
+  if (lower.includes('minio')) return 'MinIO'
+  return 'SigV4 兼容 S3'
+}
+
+function getStatusColor(status: string) {
+  switch (status) {
+    case 'completed':
+      return 'success'
+    case 'failed':
+      return 'error'
+    case 'cancelled':
+      return 'default'
+    case 'running':
+      return 'processing'
+    default:
+      return 'blue'
+  }
+}
+
+function getStatusLabel(status: string) {
+  switch (status) {
+    case 'queued':
+      return '排队中'
+    case 'running':
+      return '迁移中'
+    case 'completed':
+      return '已完成'
+    case 'failed':
+      return '失败'
+    case 'cancelled':
+      return '已取消'
+    default:
+      return status
+  }
 }
 
 export default function Migration() {
-  const [formData, setFormData] = useState<MigrationForm>({
-    sourceEndpoint: '',
-    accessKey: '',
-    secretKey: '',
-    region: 'us-east-1'
+  const { message } = App.useApp()
+  const [form] = Form.useForm()
+  const [latestJobId, setLatestJobId] = useState<number | null>(null)
+
+  const { data: jobs = [] } = useQuery({
+    queryKey: ['migration-jobs'],
+    queryFn: () => listMigrationJobs(10),
+    refetchInterval: (query) => {
+      const items = (query.state.data as MigrationJobRecord[] | undefined) || []
+      return items.some((item) => ['queued', 'running'].includes(item.status)) ? 3000 : false
+    },
   })
 
-  const [showSecret, setShowSecret] = useState(false)
-  const [detectedService, setDetectedService] = useState<string>('')
+  const { data: latestJob } = useQuery({
+    queryKey: ['migration-job', latestJobId],
+    queryFn: () => getMigrationJob(latestJobId as number),
+    enabled: !!latestJobId,
+    refetchInterval: (query) => {
+      const job = query.state.data as MigrationJobRecord | undefined
+      return job && ['queued', 'running'].includes(job.status) ? 2000 : false
+    },
+  })
 
-  const migrationMutation = useMutation({
-    mutationFn: (data: MigrationForm) => startMigration(data),
-    onSuccess: () => {
-      toast.success('迁移任务已启动，请稍候查看进度')
-      setFormData({
-        sourceEndpoint: '',
-        accessKey: '',
-        secretKey: '',
-        region: 'us-east-1'
-      })
+  const startMutation = useMutation({
+    mutationFn: startMigration,
+    onSuccess: (data: any) => {
+      message.success('迁移任务已启动')
+      setLatestJobId(data?.job?.id || null)
+      form.resetFields()
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || '迁移启动失败')
-    }
+      message.error(error.response?.data?.error || '迁移启动失败')
+    },
   })
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
+  const cancelMutation = useMutation({
+    mutationFn: cancelMigrationJob,
+    onSuccess: () => message.success('取消请求已提交'),
+    onError: (error: any) => message.error(error.response?.data?.error || '取消迁移失败'),
+  })
 
-    // 自动检测服务类型
-    if (name === 'sourceEndpoint') {
-      detectServiceType(value)
+  const displayedJobs = useMemo(() => {
+    if (latestJob && !jobs.find((job) => job.id === latestJob.id)) {
+      return [latestJob, ...jobs]
     }
-  }
+    return jobs
+  }, [jobs, latestJob])
 
-  const detectServiceType = (endpoint: string) => {
-    const lower = endpoint.toLowerCase()
-    if (lower.includes('minio')) {
-      setDetectedService('MinIO')
-    } else if (lower.includes('amazonaws.com')) {
-      setDetectedService('AWS S3')
-    } else if (lower.includes('aliyun')) {
-      setDetectedService('阿里云 OSS')
-    } else if (lower.includes('qcloud')) {
-      setDetectedService('腾讯云 COS')
-    } else {
-      setDetectedService('S3 兼容服务')
-    }
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!formData.sourceEndpoint || !formData.accessKey || !formData.secretKey) {
-      toast.error('请填写所有必填项')
-      return
-    }
-
-    migrationMutation.mutate(formData)
-  }
+  const activeJob = latestJob || displayedJobs[0] || null
+  const detectedService = Form.useWatch('sourceEndpoint', form)
+  const progressPercent = activeJob?.totalObjects ? Math.round((activeJob.completedObjects / activeJob.totalObjects) * 100) : 0
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          存储桶迁移
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          从其他 S3 兼容服务迁移存储桶到本系统
-        </p>
-      </div>
-
-      {/* 信息提示 */}
-      <div className="mb-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-blue-800 dark:text-blue-300">
-            <p className="font-medium mb-2">支持的服务类型：</p>
-            <ul className="list-disc list-inside space-y-1">
-              <li>MinIO</li>
-              <li>AWS S3</li>
-              <li>阿里云 OSS</li>
-              <li>腾讯云 COS</li>
-              <li>其他 S3 兼容服务</li>
-            </ul>
-            <p className="mt-3 font-medium">迁移内容：</p>
-            <ul className="list-disc list-inside space-y-1">
-              <li>所有存储桶及其配置</li>
-              <li>存储桶内的所有对象（文件）</li>
-              <li>对象元数据（Content-Type、ETag 等）</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      {/* 迁移表单 */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* 源端点 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              源服务端点 <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              name="sourceEndpoint"
-              value={formData.sourceEndpoint}
-              onChange={handleInputChange}
-              placeholder="例如: http://minio.example.com:9000 或 https://s3.amazonaws.com"
-              className="input w-full"
-              disabled={migrationMutation.isPending}
-            />
-            {detectedService && (
-              <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                检测到服务类型: <span className="font-medium text-primary-600 dark:text-primary-400">{detectedService}</span>
-              </p>
-            )}
-          </div>
-
-          {/* Access Key */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Access Key <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              name="accessKey"
-              value={formData.accessKey}
-              onChange={handleInputChange}
-              placeholder="源服务的 Access Key"
-              className="input w-full font-mono"
-              disabled={migrationMutation.isPending}
-              autoComplete="off"
-            />
-          </div>
-
-          {/* Secret Key */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Secret Key <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <input
-                type={showSecret ? 'text' : 'password'}
-                name="secretKey"
-                value={formData.secretKey}
-                onChange={handleInputChange}
-                placeholder="源服务的 Secret Key"
-                className="input w-full font-mono pr-24"
-                disabled={migrationMutation.isPending}
-                autoComplete="off"
-              />
-              <button
-                type="button"
-                onClick={() => setShowSecret(!showSecret)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
-              >
-                {showSecret ? '隐藏' : '显示'}
-              </button>
-            </div>
-          </div>
-
-          {/* Region */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Region（可选）
-            </label>
-            <input
-              type="text"
-              name="region"
-              value={formData.region}
-              onChange={handleInputChange}
-              placeholder="us-east-1"
-              className="input w-full"
-              disabled={migrationMutation.isPending}
-            />
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              对于 AWS S3，请填写实际 region；其他服务通常使用 us-east-1
-            </p>
-          </div>
-
-          {/* 提交按钮 */}
-          <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-              {migrationMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>正在启动迁移任务...</span>
-                </>
-              ) : migrationMutation.isSuccess ? (
-                <>
-                  <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  <span>迁移任务已启动</span>
-                </>
-              ) : migrationMutation.isError ? (
-                <>
-                  <AlertCircle className="w-4 h-4 text-red-600" />
-                  <span>启动失败，请检查配置</span>
-                </>
-              ) : null}
-            </div>
-
-            <button
-              type="submit"
-              disabled={migrationMutation.isPending}
-              className="btn btn-primary flex items-center gap-2"
+    <>
+      <Row gutter={[20, 20]}>
+        <Col xs={24} xl={10}>
+          <Card title="启动迁移任务" variant="borderless">
+            <Form
+              form={form}
+              layout="vertical"
+              onFinish={(values: { sourceEndpoint: string; accessKey: string; secretKey: string }) => startMutation.mutate(values)}
             >
-              {migrationMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  启动中...
-                </>
-              ) : (
-                <>
-                  <Upload className="w-4 h-4" />
-                  开始迁移
-                </>
+              <Form.Item label="OSS 地址" name="sourceEndpoint" rules={[{ required: true, message: '请输入 OSS 地址' }]}>
+                <Input placeholder="https://your-oss-endpoint.example.com" />
+              </Form.Item>
+              <Form.Item label="Access Key" name="accessKey" rules={[{ required: true, message: '请输入 Access Key' }]}>
+                <Input className="console-mono" />
+              </Form.Item>
+              <Form.Item label="Secret Key" name="secretKey" rules={[{ required: true, message: '请输入 Secret Key' }]}>
+                <Input.Password className="console-mono" />
+              </Form.Item>
+
+              {detectedService && (
+                <Alert
+                  showIcon
+                  type="info"
+                  style={{ marginBottom: 16 }}
+                  message={`识别服务类型：${detectServiceType(detectedService)}`}
+                  description="直接填写源 OSS 地址即可。"
+                />
               )}
-            </button>
-          </div>
-        </form>
-      </div>
 
-      {/* 注意事项 */}
-      <div className="mt-6 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-yellow-800 dark:text-yellow-300">
-            <p className="font-medium mb-2">重要提示：</p>
-            <ul className="list-disc list-inside space-y-1">
-              <li>迁移过程将在后台执行，可能需要较长时间</li>
-              <li>迁移期间请勿关闭浏览器或刷新页面</li>
-              <li>如果存储桶已存在，将跳过创建但仍会迁移对象</li>
-              <li>大量数据迁移可能占用较多网络带宽和磁盘空间</li>
-              <li>请确保源服务的凭证拥有读取权限</li>
-              <li>迁移不会删除源服务的数据</li>
-            </ul>
-          </div>
-        </div>
-      </div>
+              <Button type="primary" htmlType="submit" icon={<CloudSyncOutlined />} block loading={startMutation.isPending}>
+                开始迁移
+              </Button>
+            </Form>
+          </Card>
+        </Col>
 
-      {/* 常见问题 */}
-      <div className="mt-6 bg-gray-50 dark:bg-gray-800/50 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          常见问题
-        </h3>
-        <div className="space-y-4">
-          <div>
-            <h4 className="font-medium text-gray-900 dark:text-white mb-1">
-              Q: 如何获取 Access Key 和 Secret Key？
-            </h4>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              A: 请登录源服务的管理控制台，在 IAM 或凭证管理页面创建或查看访问密钥。
-            </p>
-          </div>
-          <div>
-            <h4 className="font-medium text-gray-900 dark:text-white mb-1">
-              Q: 迁移失败怎么办？
-            </h4>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              A: 请检查端点地址、凭证是否正确，以及源服务是否可访问。可以查看服务器日志获取详细错误信息。
-            </p>
-          </div>
-          <div>
-            <h4 className="font-medium text-gray-900 dark:text-white mb-1">
-              Q: 迁移会影响源服务吗？
-            </h4>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              A: 不会。迁移只是读取源服务的数据并复制到本系统，不会修改或删除源服务的任何内容。
-            </p>
-          </div>
+        <Col xs={24} xl={14}>
+          <Card title="任务详情" variant="borderless">
+            {activeJob ? (
+              <Space direction="vertical" size={18} style={{ width: '100%' }}>
+                <Space wrap>
+                  <Tag color={getStatusColor(activeJob.status)}>{getStatusLabel(activeJob.status)}</Tag>
+                  <Tag>Job #{activeJob.id}</Tag>
+                  {['queued', 'running'].includes(activeJob.status) && (
+                    <Button
+                      danger
+                      icon={<PauseCircleOutlined />}
+                      loading={cancelMutation.isPending}
+                      onClick={() => cancelMutation.mutate(activeJob.id)}
+                    >
+                      取消任务
+                    </Button>
+                  )}
+                </Space>
+
+                <Progress percent={progressPercent} status={activeJob.status === 'failed' ? 'exception' : activeJob.status === 'completed' ? 'success' : 'active'} />
+
+                <Descriptions bordered column={2} size="small">
+                  <Descriptions.Item label="源端点" span={2}>{activeJob.sourceEndpoint}</Descriptions.Item>
+                  <Descriptions.Item label="错误数">{activeJob.errorCount}</Descriptions.Item>
+                  <Descriptions.Item label="状态">{getStatusLabel(activeJob.status)}</Descriptions.Item>
+                  <Descriptions.Item label="当前 Bucket">{activeJob.currentBucket || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="当前对象">{activeJob.currentObject || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="对象进度">{activeJob.completedObjects} / {activeJob.totalObjects}</Descriptions.Item>
+                  <Descriptions.Item label="Bucket 总数">{activeJob.totalBuckets}</Descriptions.Item>
+                  <Descriptions.Item label="开始时间">{activeJob.startedAt ? new Date(activeJob.startedAt).toLocaleString('zh-CN') : '-'}</Descriptions.Item>
+                </Descriptions>
+
+                {activeJob.lastError && (
+                  <Alert
+                    type={activeJob.status === 'cancelled' ? 'warning' : 'error'}
+                    showIcon
+                    icon={activeJob.status === 'cancelled' ? <PauseCircleOutlined /> : <ExclamationCircleOutlined />}
+                    message={activeJob.lastError}
+                  />
+                )}
+              </Space>
+            ) : (
+              <Alert type="info" showIcon message="当前还没有迁移任务记录。" />
+            )}
+          </Card>
+        </Col>
+      </Row>
+
+      <Card title="最近迁移任务" variant="borderless">
+        <Table<MigrationJobRecord>
+          rowKey="id"
+          scroll={{ x: 960 }}
+          dataSource={displayedJobs}
+          pagination={false}
+          onRow={(record: MigrationJobRecord) => ({
+            onClick: () => setLatestJobId(record.id),
+          })}
+          columns={[
+            {
+              title: '任务 ID',
+              dataIndex: 'id',
+              width: 100,
+              render: (value) => <Text strong>#{value}</Text>,
+            },
+            {
+              title: '源端点',
+              dataIndex: 'sourceEndpoint',
+              ellipsis: true,
+            },
+            {
+              title: '状态',
+              dataIndex: 'status',
+              width: 120,
+              render: (value: string) => <Tag color={getStatusColor(value)}>{getStatusLabel(value)}</Tag>,
+            },
+            {
+              title: '进度',
+              width: 180,
+              render: (_, record) => `${record.completedObjects}/${record.totalObjects}`,
+            },
+            {
+              title: '错误数',
+              dataIndex: 'errorCount',
+              width: 100,
+            },
+            {
+              title: '开始时间',
+              dataIndex: 'startedAt',
+              width: 180,
+              render: (value: string) => value ? new Date(value).toLocaleString('zh-CN') : '-',
+            },
+            {
+              title: '操作',
+              width: 140,
+              render: (_: unknown, record: MigrationJobRecord) => (
+                <Space>
+                  <Button size="small" onClick={() => setLatestJobId(record.id)}>查看</Button>
+                  {['queued', 'running'].includes(record.status) && (
+                    <Button size="small" danger onClick={() => cancelMutation.mutate(record.id)}>
+                      取消
+                    </Button>
+                  )}
+                </Space>
+              ),
+            },
+          ]}
+        />
+
+        <div style={{ marginTop: 20 }}>
+          <Alert
+            type="success"
+            showIcon
+            icon={<CheckCircleOutlined />}
+            message="迁移任务支持状态持久化、失败回写和实时取消。"
+          />
         </div>
-      </div>
-    </div>
+      </Card>
+    </>
   )
 }

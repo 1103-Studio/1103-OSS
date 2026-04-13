@@ -1,21 +1,46 @@
-import { useState, useCallback } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useDropzone } from 'react-dropzone'
-import { 
-  File, Folder, Upload, Trash2, Download, ChevronRight, 
-  Home, RefreshCw, Share2, FolderPlus, X 
-} from 'lucide-react'
-import { listObjects, uploadObject, deleteObject, getPresignedUrl, createFolder, deleteFolder } from '../lib/api'
-import toast from 'react-hot-toast'
+import { useMemo, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  ArrowLeftOutlined,
+  CloudDownloadOutlined,
+  DeleteOutlined,
+  FolderAddOutlined,
+  FolderOpenOutlined,
+  InboxOutlined,
+  LinkOutlined,
+  ReloadOutlined,
+} from '@ant-design/icons'
+import { App, Breadcrumb, Button, Card, Col, Descriptions, Form, Input, Modal, Progress, Row, Space, Statistic, Table, Tag, Typography, Upload } from 'antd'
+import type { UploadProps } from 'antd'
+import { createFolder, deleteFolder, deleteObject, getPresignedUrl, listObjects, uploadObject, type ObjectSummary } from '../lib/api'
+
+const { Title, Paragraph, Text } = Typography
+const { Dragger } = Upload
+
+type RowItem =
+  | { type: 'folder'; key: string; name: string }
+  | { type: 'file'; key: string; name: string; size: number; lastModified: string }
+
+function formatSize(bytes: number): string {
+  if (!bytes) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let size = bytes
+  let idx = 0
+  while (size >= 1024 && idx < units.length - 1) {
+    size /= 1024
+    idx += 1
+  }
+  return `${size.toFixed(size >= 10 || idx === 0 ? 0 : 1)} ${units[idx]}`
+}
 
 export default function Objects() {
+  const { message } = App.useApp()
   const { bucket, '*': path = '' } = useParams()
   const queryClient = useQueryClient()
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
-  const [showCreateFolderModal, setShowCreateFolderModal] = useState(false)
-  const [newFolderName, setNewFolderName] = useState('')
-  const [isCreatingFolder, setIsCreatingFolder] = useState(false)
+  const [createFolderOpen, setCreateFolderOpen] = useState(false)
+  const [selected, setSelected] = useState<RowItem | null>(null)
 
   const prefix = path ? `${path}/` : ''
 
@@ -29,360 +54,267 @@ export default function Objects() {
     mutationFn: ({ key }: { key: string }) => deleteObject(bucket!, key),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['objects', bucket] })
-      toast.success('Object deleted')
+      message.success('对象已删除')
+      setSelected(null)
     },
-    onError: () => {
-      toast.error('Failed to delete object')
-    },
+    onError: () => message.error('删除对象失败'),
   })
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    for (const file of acceptedFiles) {
-      const key = prefix + file.name
-      setUploadProgress(prev => ({ ...prev, [key]: 0 }))
-      
-      try {
-        await uploadObject(bucket!, key, file, (percent) => {
-          setUploadProgress(prev => ({ ...prev, [key]: percent }))
-        })
-        toast.success(`Uploaded ${file.name}`)
-      } catch {
-        toast.error(`Failed to upload ${file.name}`)
-      } finally {
-        setUploadProgress(prev => {
-          const next = { ...prev }
-          delete next[key]
-          return next
-        })
-      }
-    }
-    refetch()
-  }, [bucket, prefix, refetch])
+  const deleteFolderMutation = useMutation({
+    mutationFn: (folderPrefix: string) => deleteFolder(bucket!, folderPrefix),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['objects', bucket] })
+      message.success('目录已删除')
+      setSelected(null)
+    },
+    onError: () => message.error('删除目录失败'),
+  })
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop })
+  const handleUploadFile = async (file: File) => {
+    const key = prefix + file.name
+    setUploadProgress((prev) => ({ ...prev, [key]: 0 }))
+    try {
+      await uploadObject(bucket!, key, file, (percent) => {
+        setUploadProgress((prev) => ({ ...prev, [key]: percent }))
+      })
+      message.success(`已上传 ${file.name}`)
+    } catch {
+      message.error(`上传失败: ${file.name}`)
+    } finally {
+      setUploadProgress((prev) => {
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
+      void queryClient.invalidateQueries({ queryKey: ['objects', bucket] })
+    }
+  }
+
+  const uploadProps: UploadProps = {
+    multiple: true,
+    showUploadList: false,
+    disabled: !bucket,
+    beforeUpload(file) {
+      void handleUploadFile(file as File)
+      return Upload.LIST_IGNORE
+    },
+  }
 
   const objects = data?.ListBucketResult?.Contents || []
   const prefixes = data?.ListBucketResult?.CommonPrefixes || []
 
-  const handleDelete = (key: string) => {
-    if (confirm(`Delete "${key}"?`)) {
-      deleteMutation.mutate({ key })
-    }
-  }
-
-  const handleDeleteFolder = async (folderPrefix: string) => {
-    const folderName = folderPrefix.replace(prefix, '').replace(/\/$/, '')
-    if (confirm(`确定要删除目录 "${folderName}" 及其所有内容吗？`)) {
-      try {
-        await deleteFolder(bucket!, folderPrefix)
-        toast.success(`目录 "${folderName}" 已删除`)
-        refetch()
-      } catch (error) {
-        toast.error('删除目录失败')
-        console.error('Failed to delete folder:', error)
-      }
-    }
-  }
-
-  const handleDownload = async (key: string) => {
-    try {
-      const url = await getPresignedUrl(bucket!, key)
-      window.open(url, '_blank')
-    } catch (error) {
-      toast.error('生成下载链接失败')
-      console.error('Failed to generate download URL:', error)
-    }
-  }
-
-  const handleShare = async (key: string) => {
-    try {
-      const url = await getPresignedUrl(bucket!, key)
-      await navigator.clipboard.writeText(url)
-      toast.success('分享链接已复制到剪贴板（有效期7天）')
-    } catch (error) {
-      toast.error('生成分享链接失败')
-      console.error('Failed to generate presigned URL:', error)
-    }
-  }
-
-  const handleCreateFolder = async () => {
-    if (!newFolderName.trim()) {
-      toast.error('请输入目录名称')
-      return
-    }
-
-    // 验证目录名称格式
-    if (newFolderName.includes('/')) {
-      toast.error('目录名称不能包含 /')
-      return
-    }
-
-    setIsCreatingFolder(true)
-    try {
-      const folderPath = prefix + newFolderName
-      await createFolder(bucket!, folderPath)
-      toast.success(`目录 "${newFolderName}" 创建成功`)
-      setShowCreateFolderModal(false)
-      setNewFolderName('')
-      refetch()
-    } catch (error) {
-      toast.error('创建目录失败')
-      console.error('Failed to create folder:', error)
-    } finally {
-      setIsCreatingFolder(false)
-    }
-  }
-
-  // Build breadcrumb
-  const pathParts = path ? path.split('/').filter(Boolean) : []
-  const breadcrumbs = [
-    { name: bucket!, path: `/buckets/${bucket}` },
-    ...pathParts.map((part, i) => ({
-      name: part,
-      path: `/buckets/${bucket}/${pathParts.slice(0, i + 1).join('/')}`
+  const rows = useMemo<RowItem[]>(() => {
+    const folderRows = prefixes.map((item) => ({
+      type: 'folder' as const,
+      key: item.Prefix,
+      name: item.Prefix.replace(prefix, '').replace(/\/$/, ''),
     }))
-  ]
+    const fileRows = objects
+      .filter((item) => item.Key.replace(prefix, ''))
+      .map((item: ObjectSummary) => ({
+        type: 'file' as const,
+        key: item.Key,
+        name: item.Key.replace(prefix, ''),
+        size: item.Size,
+        lastModified: item.LastModified,
+      }))
+    return [...folderRows, ...fileRows]
+  }, [objects, prefix, prefixes])
+
+  const totalObjects = rows.length
+  const totalSize = objects.reduce((sum, item) => sum + item.Size, 0)
+  const pathParts = path ? path.split('/').filter(Boolean) : []
 
   return (
-    <div>
-      {/* Header with Breadcrumb Navigation */}
-      <div className="mb-6">
-        {/* 当前路径导航 */}
-        <div className="mb-3 px-4 py-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center text-sm">
-            <span className="text-gray-500 dark:text-gray-400 mr-2">当前位置:</span>
-            <Link to="/buckets" className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center">
-              <Home className="w-4 h-4" />
-            </Link>
-            {breadcrumbs.map((crumb, i) => (
-              <span key={crumb.path} className="flex items-center">
-                <ChevronRight className="w-4 h-4 text-gray-400 mx-2" />
-                {i === breadcrumbs.length - 1 ? (
-                  <span className="font-semibold text-blue-600 dark:text-blue-400">{crumb.name}</span>
-                ) : (
-                  <Link to={crumb.path} className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline">
-                    {crumb.name}
-                  </Link>
-                )}
-              </span>
-            ))}
-          </div>
-        </div>
-        
-        {/* 操作按钮 */}
-        <div className="flex items-center justify-between">
-          <div className="flex gap-2">
-            <button 
-              onClick={() => setShowCreateFolderModal(true)} 
-              className="btn btn-primary"
-            >
-              <FolderPlus className="w-4 h-4 mr-2" />
-              新建目录
-            </button>
-            <button onClick={() => refetch()} className="btn btn-secondary">
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Refresh
-            </button>
-          </div>
-        </div>
+    <>
+      <section className="console-hero">
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Link to="/buckets"><Button icon={<ArrowLeftOutlined />}>返回 Bucket 列表</Button></Link>
+          <Title level={2} style={{ margin: 0 }}>Bucket `{bucket}` 对象控制台</Title>
+          <Paragraph style={{ maxWidth: 760, marginTop: 0, marginBottom: 0 }}>
+            对齐云厂商对象浏览页，支持目录导航、上传、分享、下载和删除。
+          </Paragraph>
+          <Breadcrumb
+            items={[
+              { title: <Link to="/buckets">Buckets</Link> },
+              { title: <Link to={`/buckets/${bucket}`}>{bucket}</Link> },
+              ...pathParts.map((part, index) => ({
+                title: <Link to={`/buckets/${bucket}/${pathParts.slice(0, index + 1).join('/')}`}>{part}</Link>,
+              })),
+            ]}
+          />
+        </Space>
+      </section>
+
+      <div className="console-metrics">
+        <Card variant="borderless"><Statistic title="资源数量" value={totalObjects} /></Card>
+        <Card variant="borderless"><Statistic title="文件体积" value={formatSize(totalSize)} /></Card>
+        <Card variant="borderless"><Statistic title="当前前缀" value={prefix || '/'} /></Card>
+        <Card variant="borderless"><Statistic title="Bucket" value={bucket || '-'} /></Card>
       </div>
 
-      {/* Upload Zone */}
-      <div
-        {...getRootProps()}
-        className={`card p-8 mb-6 border-2 border-dashed text-center cursor-pointer transition-colors ${
-          isDragActive ? 'border-primary-500 bg-primary-50' : 'border-gray-300 hover:border-gray-400'
-        }`}
-      >
-        <input {...getInputProps()} />
-        <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-        <p className="text-gray-600">
-          {isDragActive ? 'Drop files here...' : 'Drag & drop files here, or click to select'}
-        </p>
-      </div>
+      <Row gutter={[20, 20]}>
+        <Col xs={24} xl={16}>
+          <Card
+            title="对象操作"
+            variant="borderless"
+            extra={
+              <Space wrap>
+                <Button icon={<FolderAddOutlined />} onClick={() => setCreateFolderOpen(true)}>新建目录</Button>
+                <Button icon={<ReloadOutlined />} onClick={() => refetch()}>刷新</Button>
+              </Space>
+            }
+          >
+            <Dragger {...uploadProps} className="console-upload-dragger" style={{ marginBottom: 20 }}>
+              <div style={{ display: 'grid', gap: 10, justifyItems: 'center' }}>
+                <InboxOutlined style={{ fontSize: 32, color: '#1677ff' }} />
+                <Text strong>拖拽文件到这里，或点击上传到当前目录</Text>
+                <Text type="secondary">上传将保留文件名，并按当前前缀写入对象存储。</Text>
+              </div>
+            </Dragger>
 
-      {/* Upload Progress */}
-      {Object.entries(uploadProgress).map(([key, progress]) => (
-        <div key={key} className="card p-4 mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium truncate">{key}</span>
-            <span className="text-sm text-gray-500">{progress}%</span>
-          </div>
-          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary-500 transition-all"
-              style={{ width: `${progress}%` }}
+            {Object.entries(uploadProgress).length > 0 && (
+              <Space direction="vertical" size={12} style={{ width: '100%', marginBottom: 20 }}>
+                {Object.entries(uploadProgress).map(([key, value]) => (
+                  <Card key={key} size="small">
+                    <Text>{key}</Text>
+                    <Progress percent={value} style={{ marginTop: 10 }} />
+                  </Card>
+                ))}
+              </Space>
+            )}
+
+            <Table<RowItem>
+              rowKey="key"
+              dataSource={rows}
+              loading={isLoading}
+              scroll={{ x: 900 }}
+              onRow={(record) => ({ onClick: () => setSelected(record) })}
+              columns={[
+                {
+                  title: '名称',
+                  dataIndex: 'name',
+                  render: (_: string, record) =>
+                    record.type === 'folder' ? (
+                      <Space>
+                        <FolderOpenOutlined style={{ color: '#1677ff' }} />
+                        <Link to={`/buckets/${bucket}/${record.key.replace(/\/$/, '')}`}><Text strong>{record.name}/</Text></Link>
+                      </Space>
+                    ) : (
+                      <Text>{record.name}</Text>
+                    ),
+                },
+                {
+                  title: '类型',
+                  width: 120,
+                  render: (_: unknown, record) => <Tag color={record.type === 'folder' ? 'blue' : 'default'}>{record.type === 'folder' ? 'Folder' : 'File'}</Tag>,
+                },
+                {
+                  title: '大小',
+                  width: 140,
+                  render: (_: unknown, record) => record.type === 'file' ? formatSize(record.size) : '-',
+                },
+                {
+                  title: '更新时间',
+                  width: 180,
+                  render: (_: unknown, record) => record.type === 'file' ? new Date(record.lastModified).toLocaleString('zh-CN') : '-',
+                },
+                {
+                  title: '操作',
+                  width: 220,
+                  render: (_: unknown, record) => (
+                    <Space>
+                      {record.type === 'file' && (
+                        <>
+                          <Button
+                            size="small"
+                            icon={<LinkOutlined />}
+                            onClick={async () => {
+                              const url = await getPresignedUrl(bucket!, record.key)
+                              await navigator.clipboard.writeText(url)
+                              message.success('分享链接已复制')
+                            }}
+                          />
+                          <Button
+                            size="small"
+                            icon={<CloudDownloadOutlined />}
+                            onClick={async () => {
+                              const url = await getPresignedUrl(bucket!, record.key)
+                              window.open(url, '_blank')
+                            }}
+                          />
+                          <Button
+                            size="small"
+                            danger
+                            icon={<DeleteOutlined />}
+                            onClick={() => deleteMutation.mutate({ key: record.key })}
+                          />
+                        </>
+                      )}
+                      {record.type === 'folder' && (
+                        <Button
+                          size="small"
+                          danger
+                          icon={<DeleteOutlined />}
+                          onClick={() => deleteFolderMutation.mutate(record.key)}
+                        >
+                          删除目录
+                        </Button>
+                      )}
+                    </Space>
+                  ),
+                },
+              ]}
             />
-          </div>
-        </div>
-      ))}
+          </Card>
+        </Col>
 
-      {/* Objects List */}
-      {isLoading ? (
-        <div className="text-center py-12 text-gray-500">Loading...</div>
-      ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Name</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Size</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Modified</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-gray-500">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {/* Folders */}
-              {prefixes.map((p: { Prefix: string }) => {
-                const folderName = p.Prefix.replace(prefix, '').replace(/\/$/, '')
-                return (
-                  <tr key={p.Prefix} className="hover:bg-blue-50 dark:hover:bg-blue-900/20 bg-blue-50/30 dark:bg-blue-900/10">
-                    <td className="px-4 py-3">
-                      <Link
-                        to={`/buckets/${bucket}/${p.Prefix.replace(/\/$/, '')}`}
-                        className="flex items-center text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
-                      >
-                        <Folder className="w-5 h-5 mr-3 text-blue-500 dark:text-blue-400" />
-                        <span className="text-blue-600 dark:text-blue-400">{folderName}/</span>
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500">-</td>
-                    <td className="px-4 py-3 text-gray-500">-</td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => handleDeleteFolder(p.Prefix)}
-                        className="p-1 text-gray-400 hover:text-red-500"
-                        title="删除目录及其所有内容"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-              {/* Files */}
-              {objects.map((obj: { Key: string; Size: number; LastModified: string }) => {
-                const fileName = obj.Key.replace(prefix, '')
-                if (!fileName) return null
-                return (
-                  <tr key={obj.Key} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center">
-                        <File className="w-5 h-5 mr-3 text-gray-400" />
-                        <span className="truncate">{fileName}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500">
-                      {formatSize(obj.Size)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500">
-                      {new Date(obj.LastModified).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => handleShare(obj.Key)}
-                        className="p-1 text-gray-400 hover:text-blue-500 mr-2"
-                        title="复制分享链接（有效期7天）"
-                      >
-                        <Share2 className="w-5 h-5" />
-                      </button>
-                      <button
-                        onClick={() => handleDownload(obj.Key)}
-                        className="p-1 text-gray-400 hover:text-primary-500 mr-2"
-                      >
-                        <Download className="w-5 h-5" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(obj.Key)}
-                        className="p-1 text-gray-400 hover:text-red-500"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-              {prefixes.length === 0 && objects.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-4 py-12 text-center text-gray-500">
-                    No objects in this location
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+        <Col xs={24} xl={8}>
+          <Card title="资源详情" variant="borderless">
+            {selected ? (
+              <Descriptions bordered column={1}>
+                <Descriptions.Item label="名称">{selected.name}</Descriptions.Item>
+                <Descriptions.Item label="对象 Key">{selected.key}</Descriptions.Item>
+                <Descriptions.Item label="类型">{selected.type === 'folder' ? '逻辑目录' : '对象文件'}</Descriptions.Item>
+                {selected.type === 'file' && (
+                  <>
+                    <Descriptions.Item label="大小">{formatSize(selected.size)}</Descriptions.Item>
+                    <Descriptions.Item label="最后修改">{new Date(selected.lastModified).toLocaleString('zh-CN')}</Descriptions.Item>
+                  </>
+                )}
+              </Descriptions>
+            ) : (
+              <Paragraph type="secondary">选择左侧资源后，这里会显示对象详情。</Paragraph>
+            )}
+          </Card>
+        </Col>
+      </Row>
 
-      {/* 创建目录 Modal */}
-      {showCreateFolderModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                新建目录
-              </h3>
-              <button
-                onClick={() => {
-                  setShowCreateFolderModal(false)
-                  setNewFolderName('')
-                }}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                目录名称
-              </label>
-              <input
-                type="text"
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !isCreatingFolder) {
-                    handleCreateFolder()
-                  }
-                }}
-                placeholder="输入目录名称"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                autoFocus
-              />
-              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                当前路径: {prefix || '/'}
-              </p>
-            </div>
-            <div className="flex items-center justify-end gap-3 px-6 py-4 bg-gray-50 dark:bg-gray-900 rounded-b-lg">
-              <button
-                onClick={() => {
-                  setShowCreateFolderModal(false)
-                  setNewFolderName('')
-                }}
-                className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                disabled={isCreatingFolder}
-              >
-                取消
-              </button>
-              <button
-                onClick={handleCreateFolder}
-                disabled={isCreatingFolder || !newFolderName.trim()}
-                className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isCreatingFolder ? '创建中...' : '创建'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      <Modal
+        title="新建目录"
+        open={createFolderOpen}
+        onCancel={() => setCreateFolderOpen(false)}
+        footer={null}
+      >
+        <Form
+          layout="vertical"
+          onFinish={async (values: { folderName: string }) => {
+            if (values.folderName.includes('/')) {
+              message.error('目录名称不能包含 /')
+              return
+            }
+            await createFolder(bucket!, prefix + values.folderName)
+            message.success('目录创建成功')
+            setCreateFolderOpen(false)
+            refetch()
+          }}
+        >
+          <Form.Item name="folderName" label="目录名称" rules={[{ required: true, message: '请输入目录名称' }]}>
+            <Input />
+          </Form.Item>
+          <Button type="primary" htmlType="submit" block>创建目录</Button>
+        </Form>
+      </Modal>
+    </>
   )
-}
-
-function formatSize(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }

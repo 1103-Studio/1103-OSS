@@ -1,211 +1,198 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { KeyOutlined, LockOutlined, SafetyCertificateOutlined, SettingOutlined } from '@ant-design/icons'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Alert, App, Button, Card, Col, Descriptions, Form, Input, Row, Space, Table, Tag, Typography } from 'antd'
 import { useAuth } from '../hooks/useAuth'
-import { Key, Server, Shield, Lock } from 'lucide-react'
-import toast from 'react-hot-toast'
-import { changePassword, getStorageEndpoint } from '../lib/api'
+import { changePassword, getMySubscriptionProfile, getStorageEndpoint, listPublicSubscriptionPlans, redeemResourcePackCode, type SubscriptionPlanRecord, type UserSubscriptionRecord } from '../lib/api'
+
+const { Title, Paragraph } = Typography
 
 export default function Settings() {
+  const { message } = App.useApp()
   const { credentials } = useAuth()
-  const [oldPassword, setOldPassword] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [isChangingPassword, setIsChangingPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const queryClient = useQueryClient()
+  const endpoint = credentials?.publicEndpoint || credentials?.endpoint || getStorageEndpoint()
+  const { data: profile } = useQuery({
+    queryKey: ['my-subscription-profile'],
+    queryFn: getMySubscriptionProfile,
+  })
+  const { data: plans = [] } = useQuery({
+    queryKey: ['public-subscription-plans'],
+    queryFn: listPublicSubscriptionPlans,
+  })
+  const redeemMutation = useMutation({
+    mutationFn: redeemResourcePackCode,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-subscription-profile'] })
+      message.success('资源包兑换成功')
+    },
+    onError: (error: any) => message.error(error.response?.data?.error || '兑换失败'),
+  })
 
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const activePlanCount = profile?.activePlans?.length || 0
+  const summaryItems = useMemo(() => ([
+    { label: '总存储额度', value: profile?.totalStorageBytes || 0 },
+    { label: '总流量额度', value: profile?.totalTrafficBytes || 0 },
+    { label: '对象额度', value: profile?.totalObjectQuota || 0 },
+  ]), [profile])
 
-    if (newPassword !== confirmPassword) {
-      toast.error('新密码和确认密码不匹配')
+  const handleChangePassword = async (values: { oldPassword: string; newPassword: string; confirmPassword: string }) => {
+    if (values.newPassword !== values.confirmPassword) {
+      message.error('新密码和确认密码不匹配')
       return
     }
-
-    if (newPassword.length < 8) {
-      toast.error('新密码至少需要 8 位')
-      return
-    }
-
-    setIsChangingPassword(true)
+    setLoading(true)
     try {
-      await changePassword(oldPassword, newPassword)
-      toast.success('密码修改成功')
-      setOldPassword('')
-      setNewPassword('')
-      setConfirmPassword('')
+      await changePassword(values.oldPassword, values.newPassword)
+      message.success('密码修改成功')
     } catch (error: any) {
-      if (error.response?.status === 401) {
-        toast.error('旧密码不正确')
-      } else {
-        toast.error(error.response?.data?.error || '密码修改失败')
-      }
+      message.error(error.response?.data?.error || '密码修改失败')
     } finally {
-      setIsChangingPassword(false)
+      setLoading(false)
     }
   }
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-8">设置</h1>
+    <>
+      <section className="console-hero">
+        <Title level={2} style={{ margin: 0 }}>设置中心</Title>
+        <Paragraph style={{ maxWidth: 760, marginTop: 12, marginBottom: 0 }}>
+          管理账号密码、控制台连接信息和 SDK 接入模板。浏览器端不再保存 Secret Key，仅展示安全概况和接入方式。
+        </Paragraph>
+      </section>
 
-      <div className="space-y-6">
-        {/* Change Password */}
-        <div className="card p-6">
-          <div className="flex items-center mb-4">
-            <Lock className="w-5 h-5 text-primary-600 mr-2" />
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">修改密码</h2>
-          </div>
-          <form onSubmit={handleChangePassword} className="space-y-4 max-w-md">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                旧密码
-              </label>
-              <input
-                type="password"
-                value={oldPassword}
-                onChange={(e) => setOldPassword(e.target.value)}
-                className="input"
-                required
-                disabled={isChangingPassword}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                新密码
-              </label>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="input"
-                required
-                minLength={8}
-                disabled={isChangingPassword}
-              />
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">至少 8 位字符</p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                确认新密码
-              </label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="input"
-                required
-                minLength={8}
-                disabled={isChangingPassword}
-              />
-            </div>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={isChangingPassword}
-            >
-              {isChangingPassword ? '修改中...' : '修改密码'}
-            </button>
-          </form>
-        </div>
+      <Row gutter={[20, 20]}>
+        <Col xs={24} xl={10}>
+          <Card title="修改密码" variant="borderless">
+            <Form layout="vertical" onFinish={handleChangePassword}>
+              <Form.Item label="旧密码" name="oldPassword" rules={[{ required: true, message: '请输入旧密码' }]}>
+                <Input.Password prefix={<LockOutlined />} />
+              </Form.Item>
+              <Form.Item label="新密码" name="newPassword" rules={[{ required: true, min: 8, message: '新密码至少 8 位' }]}>
+                <Input.Password prefix={<SafetyCertificateOutlined />} />
+              </Form.Item>
+              <Form.Item label="确认新密码" name="confirmPassword" rules={[{ required: true, message: '请再次输入新密码' }]}>
+                <Input.Password prefix={<SafetyCertificateOutlined />} />
+              </Form.Item>
+              <Button type="primary" htmlType="submit" block loading={loading}>修改密码</Button>
+            </Form>
+          </Card>
+        </Col>
 
-        {/* Connection Info */}
-        <div className="card p-6">
-          <div className="flex items-center mb-4">
-            <Server className="w-5 h-5 text-primary-600 mr-2" />
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">连接信息</h2>
-          </div>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-                端点地址
-              </label>
-              <div className="font-mono text-sm bg-gray-50 dark:bg-gray-700 px-3 py-2 rounded border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white">
-                {credentials?.publicEndpoint || credentials?.endpoint || getStorageEndpoint()}
-              </div>
-            </div>
-          </div>
-        </div>
+        <Col xs={24} xl={14}>
+          <Card title="连接与凭证概览" variant="borderless">
+            <Descriptions bordered column={1}>
+              <Descriptions.Item label="当前账号">{credentials?.displayName || credentials?.username || credentials?.accessKey}</Descriptions.Item>
+              <Descriptions.Item label="Access Key">{credentials?.accessKey || '-'}</Descriptions.Item>
+              <Descriptions.Item label="控制台端点">{endpoint}</Descriptions.Item>
+              <Descriptions.Item label="已生效资源包">{activePlanCount}</Descriptions.Item>
+              <Descriptions.Item label="Secret Key">浏览器侧不展示，统一由服务端管控</Descriptions.Item>
+            </Descriptions>
 
-        {/* Credentials */}
-        <div className="card p-6">
-          <div className="flex items-center mb-4">
-            <Key className="w-5 h-5 text-primary-600 mr-2" />
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">API 凭证</h2>
-          </div>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-                Access Key
-              </label>
-              <div className="font-mono text-sm bg-gray-50 dark:bg-gray-700 px-3 py-2 rounded border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white">
-                {credentials?.accessKey || '-'}
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-                Secret Key
-              </label>
-              <div className="font-mono text-sm bg-gray-50 dark:bg-gray-700 px-3 py-2 rounded border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white">
-                ••••••••••••••••••••
-              </div>
-            </div>
-          </div>
-        </div>
+            <Alert
+              style={{ marginTop: 20 }}
+              type="success"
+              showIcon
+              message="Web 控制台当前使用会话令牌与服务端预签名，不在浏览器暴露对象存储密钥。"
+            />
+          </Card>
+        </Col>
+      </Row>
 
-        {/* SDK Examples */}
-        <div className="card p-6">
-          <div className="flex items-center mb-4">
-            <Shield className="w-5 h-5 text-primary-600 mr-2" />
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">SDK 配置示例</h2>
-          </div>
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-2">AWS CLI</h3>
-              <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm overflow-x-auto">
+      <Row gutter={[20, 20]}>
+        <Col xs={24} xl={10}>
+          <Card title="兑换 OSS 资源包" variant="borderless">
+            <Form layout="vertical" onFinish={(values: { code: string }) => redeemMutation.mutate(values.code)}>
+              <Form.Item label="兑换码" name="code" rules={[{ required: true, message: '请输入兑换码' }]}>
+                <Input placeholder="输入管理员发放的资源包兑换码" />
+              </Form.Item>
+              <Button type="primary" htmlType="submit" block loading={redeemMutation.isPending}>立即兑换</Button>
+            </Form>
+            <Space direction="vertical" size={10} style={{ width: '100%', marginTop: 16 }}>
+              {summaryItems.map((item) => (
+                <Alert key={item.label} type="info" showIcon message={`${item.label}: ${item.value}`} />
+              ))}
+            </Space>
+          </Card>
+        </Col>
+
+        <Col xs={24} xl={14}>
+          <Card title="可选订阅档位" variant="borderless">
+            <Table<SubscriptionPlanRecord>
+              rowKey="id"
+              dataSource={plans}
+              pagination={{ pageSize: 6 }}
+              columns={[
+                { title: '档位', dataIndex: 'name', render: (value: string, record) => <Space><Title level={5} style={{ margin: 0 }}>{value}</Title><Tag>{record.code}</Tag></Space> },
+                { title: '资源', render: (_: unknown, record) => `${record.storageBytes}/${record.trafficBytes}/${record.objectQuota}` },
+                { title: '有效期', dataIndex: 'durationDays', width: 100, render: (value: number) => `${value} 天` },
+                { title: '价格', dataIndex: 'priceCents', width: 120, render: (value: number) => `¥ ${(value || 0) / 100}` },
+              ]}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      <Card title="我的资源包明细" variant="borderless">
+        <Table<UserSubscriptionRecord>
+          rowKey="id"
+          dataSource={profile?.activePlans || []}
+          pagination={false}
+          columns={[
+            { title: '来源', dataIndex: 'source' },
+            { title: '存储额度', dataIndex: 'storageBytes' },
+            { title: '流量额度', dataIndex: 'trafficBytes' },
+            { title: '对象额度', dataIndex: 'objectQuota' },
+            { title: '开始时间', dataIndex: 'startedAt', render: (value: string) => value ? new Date(value).toLocaleString('zh-CN') : '-' },
+            { title: '到期时间', dataIndex: 'expiresAt', render: (value?: string | null) => value ? new Date(value).toLocaleString('zh-CN') : '长期' },
+          ]}
+        />
+      </Card>
+
+      <Card title="SDK 接入示例" variant="borderless">
+        <Row gutter={[20, 20]}>
+          <Col xs={24} lg={8}>
+            <Card size="small" title={<><SettingOutlined /> AWS CLI</>}>
+              <pre className="console-mono" style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
 {`aws configure set aws_access_key_id ${credentials?.accessKey || 'YOUR_ACCESS_KEY'}
 aws configure set aws_secret_access_key YOUR_SECRET_KEY
 aws configure set default.region us-east-1
-
-# Use with endpoint
-aws --endpoint-url ${credentials?.publicEndpoint || credentials?.endpoint || getStorageEndpoint()} s3 ls`}
+aws --endpoint-url ${endpoint} s3 ls`}
               </pre>
-            </div>
-            <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Python (boto3)</h3>
-              <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm overflow-x-auto">
+            </Card>
+          </Col>
+          <Col xs={24} lg={8}>
+            <Card size="small" title={<><KeyOutlined /> Python / boto3</>}>
+              <pre className="console-mono" style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
 {`import boto3
 
-s3 = boto3.client('s3',
-    endpoint_url='${credentials?.publicEndpoint || credentials?.endpoint || getStorageEndpoint()}',
-    aws_access_key_id='${credentials?.accessKey || 'YOUR_ACCESS_KEY'}',
-    aws_secret_access_key='YOUR_SECRET_KEY'
-)
-
-# List buckets
-response = s3.list_buckets()
-print(response['Buckets'])`}
+s3 = boto3.client(
+  's3',
+  endpoint_url='${endpoint}',
+  aws_access_key_id='${credentials?.accessKey || 'YOUR_ACCESS_KEY'}',
+  aws_secret_access_key='YOUR_SECRET_KEY'
+)`}
               </pre>
-            </div>
-            <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-2">JavaScript (AWS SDK)</h3>
-              <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm overflow-x-auto">
-{`import { S3Client, ListBucketsCommand } from '@aws-sdk/client-s3';
-
-const client = new S3Client({
-  endpoint: '${credentials?.publicEndpoint || credentials?.endpoint || getStorageEndpoint()}',
+            </Card>
+          </Col>
+          <Col xs={24} lg={8}>
+            <Card size="small" title={<><SafetyCertificateOutlined /> JavaScript / AWS SDK</>}>
+              <pre className="console-mono" style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
+{`const client = new S3Client({
+  endpoint: '${endpoint}',
   region: 'us-east-1',
   credentials: {
     accessKeyId: '${credentials?.accessKey || 'YOUR_ACCESS_KEY'}',
-    secretAccessKey: 'YOUR_SECRET_KEY'
+    secretAccessKey: 'YOUR_SECRET_KEY',
   },
-  forcePathStyle: true
-});
-
-const response = await client.send(new ListBucketsCommand({}));
-console.log(response.Buckets);`}
+  forcePathStyle: true,
+})`}
               </pre>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+            </Card>
+          </Col>
+        </Row>
+      </Card>
+    </>
   )
 }
