@@ -40,15 +40,18 @@ jobs:
         run: mkdocs build --clean
 
       - name: Setup Pages
+        if: ${{ github.event.repository.has_pages }}
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
+        if: ${{ github.event.repository.has_pages }}
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./site
 
   deploy:
     needs: build
+    if: ${{ github.event.repository.has_pages }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
