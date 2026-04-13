@@ -835,7 +835,7 @@ func newMigrationHTTPClient(timeout time.Duration) *http.Client {
 func mustParsePrefix(value string) netip.Prefix {
 	prefix, err := netip.ParsePrefix(value)
 	if err != nil {
-		panic(err)
+		return netip.Prefix{}
 	}
 	return prefix
 }

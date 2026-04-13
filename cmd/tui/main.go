@@ -52,7 +52,7 @@ func main() {
 func (a *tuiApp) run() error {
 	for {
 		a.clear()
-		fmt.Println("1103-OSS TUI 管理端")
+		fmt.Println("MaxIO-OSS TUI 管理端")
 		fmt.Println("===================")
 		fmt.Println("1. 实例概览")
 		fmt.Println("2. 用户管理")

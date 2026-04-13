@@ -1,8 +1,13 @@
 import { Suspense, lazy, type ReactElement } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Route, Routes } from 'react-router-dom'
 import { Spin } from 'antd'
 import Layout from './components/Layout'
 import { useAuth } from './hooks/useAuth'
+import {
+  IAM_PAGE_PERMISSIONS,
+  MIGRATION_PAGE_PERMISSIONS,
+  TICKET_PAGE_PERMISSIONS,
+} from './lib/permissions'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Buckets = lazy(() => import('./pages/Buckets'))
@@ -15,11 +20,13 @@ const Migration = lazy(() => import('./pages/Migration'))
 const AccessControl = lazy(() => import('./pages/AccessControl'))
 const Tickets = lazy(() => import('./pages/Tickets'))
 const Tester = lazy(() => import('./pages/Tester'))
+const AccessDenied = lazy(() => import('./pages/AccessDenied'))
+const NotFound = lazy(() => import('./pages/NotFound'))
 
 function AdminRoute({ children }: { children: ReactElement }) {
   const { hasPermission } = useAuth()
-  if (!hasPermission(PermUserManage, PermCredentialManage, PermRoleManage, PermBucketManage, PermBucketAssign, PermBucketQuota, PermBucketTraffic, PermBucketPolicy)) {
-    return <Navigate to="/" replace />
+  if (!hasPermission(...IAM_PAGE_PERMISSIONS)) {
+    return <AccessDenied />
   }
   return children
 }
@@ -27,7 +34,7 @@ function AdminRoute({ children }: { children: ReactElement }) {
 function SuperAdminRoute({ children }: { children: ReactElement }) {
   const { isAdmin } = useAuth()
   if (!isAdmin) {
-    return <Navigate to="/" replace />
+    return <AccessDenied />
   }
   return children
 }
@@ -35,22 +42,10 @@ function SuperAdminRoute({ children }: { children: ReactElement }) {
 function PermissionRoute({ children, permissions }: { children: ReactElement; permissions: string[] }) {
   const { hasPermission } = useAuth()
   if (!hasPermission(...permissions)) {
-    return <Navigate to="/" replace />
+    return <AccessDenied />
   }
   return children
 }
-
-const PermUserManage = 'user:manage'
-const PermCredentialManage = 'credential:manage'
-const PermRoleManage = 'role:manage'
-const PermBucketManage = 'bucket:manage'
-const PermBucketAssign = 'bucket:assign'
-const PermBucketQuota = 'bucket:quota'
-const PermBucketTraffic = 'bucket:traffic'
-const PermBucketPolicy = 'bucket:policy'
-const PermTicketCreate = 'ticket:create'
-const PermTicketRead = 'ticket:read'
-const PermTicketManage = 'ticket:manage'
 
 export default function App() {
   const { isAuthenticated } = useAuth()
@@ -70,14 +65,14 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/buckets" element={<Buckets />} />
           <Route path="/buckets/:bucket/*" element={<Objects />} />
-          <Route path="/migration" element={<PermissionRoute permissions={[PermBucketManage]}><Migration /></PermissionRoute>} />
+          <Route path="/migration" element={<PermissionRoute permissions={MIGRATION_PAGE_PERMISSIONS}><Migration /></PermissionRoute>} />
           <Route path="/iam" element={<AdminRoute><AccessControl /></AdminRoute>} />
-          <Route path="/tickets" element={<PermissionRoute permissions={[PermTicketCreate, PermTicketRead, PermTicketManage]}><Tickets /></PermissionRoute>} />
+          <Route path="/tickets" element={<PermissionRoute permissions={TICKET_PAGE_PERMISSIONS}><Tickets /></PermissionRoute>} />
           <Route path="/tester" element={<Tester />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/audit-logs" element={<SuperAdminRoute><AuditLogs /></SuperAdminRoute>} />
           <Route path="/about" element={<About />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
     </Layout>

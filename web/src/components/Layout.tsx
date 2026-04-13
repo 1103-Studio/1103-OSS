@@ -27,6 +27,11 @@ import {
 } from 'antd'
 import type { MenuProps } from 'antd'
 import { useAuth } from '../hooks/useAuth'
+import {
+  IAM_PAGE_PERMISSIONS,
+  MIGRATION_PAGE_PERMISSIONS,
+  TICKET_PAGE_PERMISSIONS,
+} from '../lib/permissions'
 import BrandLogo from './BrandLogo'
 
 const { Header, Sider, Content } = AntLayout
@@ -44,9 +49,9 @@ export default function Layout({ children }: LayoutProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  const canUseTickets = hasPermission('ticket:create', 'ticket:read', 'ticket:manage')
-  const canUseMigration = hasPermission('bucket:manage')
-  const canUseIAM = hasPermission('user:manage', 'credential:manage', 'role:manage', 'bucket:manage', 'bucket:assign', 'bucket:quota', 'bucket:traffic', 'bucket:policy')
+  const canUseTickets = hasPermission(...TICKET_PAGE_PERMISSIONS)
+  const canUseMigration = hasPermission(...MIGRATION_PAGE_PERMISSIONS)
+  const canUseIAM = hasPermission(...IAM_PAGE_PERMISSIONS)
 
   const mainMenuItems = useMemo<MenuProps['items']>(() => {
     const items: MenuProps['items'] = [

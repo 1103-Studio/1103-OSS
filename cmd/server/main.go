@@ -37,7 +37,7 @@ func main() {
 	}
 	defer logger.Sync()
 
-	logger.Info("Starting 1103-OSS Server...")
+	logger.Info("Starting MaxIO-OSS Server...")
 
 	// 初始化数据库
 	repo, err := metadata.NewPostgresRepository(cfg.Database.DSN())
@@ -214,7 +214,7 @@ func printBootstrapCredentials(info *adminBootstrapInfo, cfg *config.Config) {
 
 	var lines []string
 	lines = append(lines, "")
-	lines = append(lines, "========== 1103-OSS Bootstrap ==========")
+	lines = append(lines, "========== MaxIO-OSS Bootstrap ==========")
 	if info.UserCreated {
 		lines = append(lines, fmt.Sprintf("Admin Username: %s", info.Username))
 		lines = append(lines, fmt.Sprintf("Admin Password: %s", info.Password))

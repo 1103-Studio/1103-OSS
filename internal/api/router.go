@@ -385,7 +385,7 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 		}
 
 		// 验证签名
-		c.Header("Server", "1103-OSS/1.0")
+		c.Header("Server", "MaxIO-OSS/1.0")
 		signer := auth.NewSignatureV4(cred.AccessKey, cred.SecretKey, "us-east-1")
 		if err := signer.VerifyRequest(c.Request, cred.SecretKey); err != nil {
 			c.XML(http.StatusForbidden, response.NewError(response.ErrSignatureDoesNotMatch, err.Error(), c.Request.URL.Path))

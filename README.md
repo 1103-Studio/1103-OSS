@@ -1,4 +1,4 @@
-# 1103-OSS
+# MaxIO-OSS
 
 <div align="center">
 
@@ -32,7 +32,7 @@
 
 ## 项目简介
 
-1103-OSS 是一个**生产就绪**的对象存储系统，完全兼容 AWS S3 API。采用 Go 语言编写后端，React 构建现代化管理界面，支持 Docker 一键部署。
+MaxIO-OSS 是一个**生产就绪**的对象存储系统，完全兼容 AWS S3 API。采用 Go 语言编写后端，React 构建现代化管理界面，支持 Docker 一键部署。
 
 适用场景：
 - 🖼️ 图片/视频存储与 CDN

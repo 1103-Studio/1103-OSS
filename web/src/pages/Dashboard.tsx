@@ -12,6 +12,11 @@ import {
 import { Button, Card, Col, Empty, Row, Space, Statistic, Tag, Typography } from 'antd'
 import { getMySubscriptionProfile, listBuckets } from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
+import {
+  IAM_PAGE_PERMISSIONS,
+  MIGRATION_PAGE_PERMISSIONS,
+  TICKET_PAGE_PERMISSIONS,
+} from '../lib/permissions'
 
 const { Paragraph, Text, Title } = Typography
 
@@ -26,9 +31,9 @@ export default function Dashboard() {
     queryFn: getMySubscriptionProfile,
   })
 
-  const canUseMigration = hasPermission('bucket:manage')
-  const canUseTickets = hasPermission('ticket:create', 'ticket:read', 'ticket:manage')
-  const canUseIAM = hasPermission('user:manage', 'role:manage', 'credential:manage')
+  const canUseMigration = hasPermission(...MIGRATION_PAGE_PERMISSIONS)
+  const canUseTickets = hasPermission(...TICKET_PAGE_PERMISSIONS)
+  const canUseIAM = hasPermission(...IAM_PAGE_PERMISSIONS)
   const canUseAudit = !!credentials?.isAdmin
   const buckets = bucketsData?.ListAllMyBucketsResult?.Buckets?.Bucket || []
 
