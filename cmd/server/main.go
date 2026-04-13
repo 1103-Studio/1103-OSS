@@ -245,12 +245,12 @@ func saveCredentialsToEnv(accessKey, secretKey string) error {
 			if err != nil {
 				return fmt.Errorf("failed to read .env.example: %w", err)
 			}
-			if err := os.WriteFile(envPath, content, 0644); err != nil {
+			if err := os.WriteFile(envPath, content, 0600); err != nil {
 				return fmt.Errorf("failed to create .env from template: %w", err)
 			}
 		} else {
 			// 创建新的 .env 文件
-			if err := os.WriteFile(envPath, []byte(""), 0644); err != nil {
+			if err := os.WriteFile(envPath, []byte(""), 0600); err != nil {
 				return fmt.Errorf("failed to create .env: %w", err)
 			}
 		}
@@ -303,7 +303,7 @@ func saveCredentialsToEnv(accessKey, secretKey string) error {
 
 	// 写回文件
 	content := strings.Join(lines, "\n") + "\n"
-	if err := os.WriteFile(envPath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(envPath, []byte(content), 0600); err != nil {
 		return fmt.Errorf("failed to write .env: %w", err)
 	}
 

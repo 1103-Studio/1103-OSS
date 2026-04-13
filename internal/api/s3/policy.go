@@ -10,6 +10,8 @@ import (
 	"github.com/gooss/server/pkg/response"
 )
 
+const maxBucketPolicySize = 1 << 20
+
 // PutBucketPolicy PUT /{bucket}?policy - 设置 Bucket 策略
 func (h *Handler) PutBucketPolicy(c *gin.Context) {
 	bucketName := c.Param("bucket")
@@ -20,14 +22,18 @@ func (h *Handler) PutBucketPolicy(c *gin.Context) {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Bucket not found")
 		return
 	}
-	if !h.requireBucketOwner(c, bucket) {
+	if !h.requireBucketAdminAccess(c, bucket) {
 		return
 	}
 
 	// 读取策略 JSON
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxBucketPolicySize+1))
 	if err != nil {
 		h.sendError(c, http.StatusBadRequest, response.ErrMalformedPOSTRequest, "Failed to read policy")
+		return
+	}
+	if len(body) > maxBucketPolicySize {
+		h.sendError(c, http.StatusRequestEntityTooLarge, response.ErrMalformedPOSTRequest, "Policy document too large")
 		return
 	}
 
@@ -57,7 +63,7 @@ func (h *Handler) GetBucketPolicy(c *gin.Context) {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Bucket not found")
 		return
 	}
-	if !h.requireBucketOwner(c, bucket) {
+	if !h.requireBucketAdminAccess(c, bucket) {
 		return
 	}
 
@@ -81,7 +87,7 @@ func (h *Handler) DeleteBucketPolicy(c *gin.Context) {
 		h.sendError(c, http.StatusNotFound, response.ErrNoSuchBucket, "Bucket not found")
 		return
 	}
-	if !h.requireBucketOwner(c, bucket) {
+	if !h.requireBucketAdminAccess(c, bucket) {
 		return
 	}
 

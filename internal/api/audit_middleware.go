@@ -1,28 +1,47 @@
 package api
 
 import (
-	"bytes"
 	"context"
-	"io"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gooss/server/internal/metadata"
+	"github.com/gooss/server/pkg/logger"
 )
+
+const (
+	auditLogQueueSize = 2048
+	auditLogWorkers   = 2
+	auditDBTimeout    = 5 * time.Second
+)
+
+func (s *Server) startAuditWorkers(workerCount int) {
+	if workerCount <= 0 || s.auditQueue == nil {
+		return
+	}
+	for i := 0; i < workerCount; i++ {
+		go func() {
+			for logEntry := range s.auditQueue {
+				if logEntry == nil {
+					continue
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), auditDBTimeout)
+				err := s.repo.CreateAuditLog(ctx, logEntry)
+				cancel()
+				if err != nil {
+					logger.Warnf("failed to create audit log: %v", err)
+				}
+			}
+		}()
+	}
+}
 
 // AuditMiddleware 审计日志中间件
 func (s *Server) AuditMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 记录请求开始时间
 		startTime := time.Now()
-
-		// 记录请求体（用于某些操作）
-		var bodyBytes []byte
-		if c.Request.Body != nil {
-			bodyBytes, _ = io.ReadAll(c.Request.Body)
-			c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-		}
 
 		// 处理请求
 		c.Next()
@@ -80,14 +99,12 @@ func (s *Server) AuditMiddleware() gin.HandlerFunc {
 			log.ErrorMessage = c.Errors.String()
 		}
 
-		// 异步记录日志，避免影响性能
-		go func() {
-			ctx := context.Background()
-			if err := s.repo.CreateAuditLog(ctx, log); err != nil {
-				// 仅记录错误到结构化日志，不输出到标准输出
-				// TODO: 使用 logger.Error("failed to create audit log", "error", err)
-			}
-		}()
+		// 使用有界队列做异步写入，避免为每个请求无限起 goroutine。
+		select {
+		case s.auditQueue <- log:
+		default:
+			logger.Warn("audit log queue full, dropping log entry")
+		}
 	}
 }
 
@@ -109,7 +126,7 @@ func (s *Server) parseAction(c *gin.Context) (action, resourceType, resourceName
 		parts := strings.Split(strings.Trim(path, "/"), "/")
 
 		// Bucket policy 操作
-		if c.Request.URL.RawQuery == "policy" {
+		if _, ok := c.GetQuery("policy"); ok && len(parts) > 0 && parts[0] != "" {
 			bucketName := parts[0]
 			switch method {
 			case "PUT":
@@ -131,9 +148,9 @@ func (s *Server) parseAction(c *gin.Context) (action, resourceType, resourceName
 					return metadata.ActionDeleteBucket, metadata.ResourceTypeBucket, bucketName
 				}
 			}
-		case 2:
+		default:
 			// Object 级别操作
-			objectKey := parts[1]
+			objectKey := strings.Join(parts[1:], "/")
 			switch method {
 			case "PUT":
 				return metadata.ActionUploadObject, metadata.ResourceTypeObject, objectKey
@@ -158,8 +175,47 @@ func (s *Server) parseAction(c *gin.Context) (action, resourceType, resourceName
 			switch method {
 			case "POST":
 				return metadata.ActionCreateCredential, metadata.ResourceTypeCredential, ""
+			case "PUT":
+				return metadata.ActionUpdateCredential, metadata.ResourceTypeCredential, ""
 			case "DELETE":
 				return metadata.ActionDeleteCredential, metadata.ResourceTypeCredential, ""
+			}
+		}
+		if strings.Contains(path, "/roles") {
+			switch method {
+			case "POST":
+				return metadata.ActionCreateRole, metadata.ResourceTypeRole, ""
+			case "PUT":
+				return metadata.ActionUpdateRole, metadata.ResourceTypeRole, ""
+			case "DELETE":
+				return metadata.ActionDeleteRole, metadata.ResourceTypeRole, ""
+			}
+		}
+		if strings.Contains(path, "/buckets") {
+			switch method {
+			case "PUT":
+				if strings.Contains(path, "/access") {
+					return metadata.ActionUpdateBucketAccess, metadata.ResourceTypeBucketAccess, ""
+				}
+				return metadata.ActionUpdateBucket, metadata.ResourceTypeBucket, ""
+			case "POST":
+				if strings.Contains(path, "/access") {
+					return metadata.ActionUpdateBucketAccess, metadata.ResourceTypeBucketAccess, ""
+				}
+			case "DELETE":
+				if strings.Contains(path, "/access") {
+					return metadata.ActionDeleteBucketAccess, metadata.ResourceTypeBucketAccess, ""
+				}
+			}
+		}
+		if strings.Contains(path, "/tickets") {
+			switch method {
+			case "GET":
+				return metadata.ActionUpdateTicket, metadata.ResourceTypeTicket, ""
+			case "PUT":
+				return metadata.ActionUpdateTicket, metadata.ResourceTypeTicket, ""
+			case "POST":
+				return metadata.ActionCreateTicketReply, metadata.ResourceTypeTicket, ""
 			}
 		}
 	}
@@ -167,6 +223,17 @@ func (s *Server) parseAction(c *gin.Context) (action, resourceType, resourceName
 	if strings.HasPrefix(path, "/user/") {
 		if path == "/user/change-password" && method == "POST" {
 			return metadata.ActionUpdateUser, metadata.ResourceTypeUser, "change-password"
+		}
+		if path == "/user/tickets" && method == "POST" {
+			return metadata.ActionCreateTicket, metadata.ResourceTypeTicket, ""
+		}
+		if strings.Contains(path, "/user/tickets/") {
+			switch method {
+			case "PUT":
+				return metadata.ActionUpdateTicket, metadata.ResourceTypeTicket, ""
+			case "POST":
+				return metadata.ActionCreateTicketReply, metadata.ResourceTypeTicket, ""
+			}
 		}
 	}
 

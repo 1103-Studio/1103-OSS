@@ -63,8 +63,8 @@
 
 ### 🎨 现代化界面
 - **响应式设计**：支持桌面端和移动端
-- **暗黑模式**：自动适配系统主题
-- **多语言支持**：中文/英文界面切换
+- **企业控制台 UI**：统一采用 Ant Design 组件体系
+- **移动端适配**：抽屉导航、表格横滑、表单重排
 - **实时更新**：React Query 实现数据自动刷新
 
 ### 🐳 云原生
@@ -95,12 +95,9 @@
 | **TypeScript** | 5.2+ | 类型安全，代码质量保证 |
 | **Vite** | 5.0+ | 构建工具，快速热重载 |
 | **React Router** | 6.20+ | 路由管理，SPA 导航 |
+| **Ant Design** | 5.27+ | 企业级控制台组件库 |
 | **TanStack Query** | 5.8+ | 数据获取与缓存管理 |
 | **Axios** | 1.6+ | HTTP 客户端，API 请求 |
-| **TailwindCSS** | 3.3+ | 原子化 CSS，快速样式开发 |
-| **Lucide React** | 0.294+ | 图标库，现代化图标 |
-| **React Dropzone** | 14.2+ | 文件拖拽上传组件 |
-| **date-fns** | 2.30+ | 日期处理工具库 |
 
 ### 基础设施 (Infrastructure)
 
@@ -957,8 +954,8 @@ npm test
 - [x] Web 管理界面
 - [x] Docker 容器化部署
 - [x] 审计日志
-- [x] 多语言支持
-- [x] 暗黑模式
+- [x] 企业控制台界面
+- [x] 手机端控制台适配
 - [x] 中文内容 UTF-8 编码支持
 
 ### 进行中 🚧
@@ -1049,7 +1046,7 @@ A:
 - [Gin](https://github.com/gin-gonic/gin) - HTTP Web 框架
 - [React](https://react.dev/) - 用户界面库
 - [PostgreSQL](https://www.postgresql.org/) - 关系型数据库
-- [TailwindCSS](https://tailwindcss.com/) - CSS 框架
+- [Ant Design](https://ant.design/) - 企业级 React 组件库
 - [Vite](https://vitejs.dev/) - 前端构建工具
 
 ## 许可证

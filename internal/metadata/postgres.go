@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	configpkg "github.com/gooss/server/pkg/config"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,6 +20,8 @@ type PostgresRepository struct {
 	tx   pgx.Tx
 }
 
+const postgresInitTimeout = 5 * time.Second
+
 // NewPostgresRepository 创建 PostgreSQL 仓库
 func NewPostgresRepository(dsn string) (*PostgresRepository, error) {
 	config, err := pgxpool.ParseConfig(dsn)
@@ -26,17 +29,30 @@ func NewPostgresRepository(dsn string) (*PostgresRepository, error) {
 		return nil, fmt.Errorf("failed to parse dsn: %w", err)
 	}
 
-	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	cfg := configpkg.Get()
+	if cfg != nil {
+		if cfg.Database.MaxOpenConns > 0 {
+			config.MaxConns = int32(cfg.Database.MaxOpenConns)
+		}
+		if cfg.Database.MaxIdleConns > 0 {
+			config.MinConns = int32(cfg.Database.MaxIdleConns)
+		}
+	}
+
+	initCtx, cancel := context.WithTimeout(context.Background(), postgresInitTimeout)
+	defer cancel()
+
+	pool, err := pgxpool.NewWithConfig(initCtx, config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	if err := pool.Ping(context.Background()); err != nil {
+	if err := pool.Ping(initCtx); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
 	repo := &PostgresRepository{pool: pool}
-	if err := repo.EnsureSchema(context.Background()); err != nil {
+	if err := repo.EnsureSchema(initCtx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("failed to ensure schema: %w", err)
 	}
@@ -88,8 +104,9 @@ func (r *PostgresRepository) GetUserByID(ctx context.Context, id int64) (*User, 
 	if email.Valid {
 		user.Email = email.String
 	}
-	user.Roles, _ = r.ListUserRoles(ctx, user.ID)
-	user.Permissions, _ = r.GetUserPermissions(ctx, user.ID)
+	if err := r.populateUsersAccess(ctx, []*User{user}); err != nil {
+		return nil, err
+	}
 	return user, nil
 }
 
@@ -112,9 +129,10 @@ func (r *PostgresRepository) GetUserByUsername(ctx context.Context, username str
 	if displayName.Valid {
 		user.DisplayName = displayName.String
 	}
-	user.Roles, _ = r.ListUserRoles(ctx, user.ID)
-	user.Permissions, _ = r.GetUserPermissions(ctx, user.ID)
-	return user, err
+	if err := r.populateUsersAccess(ctx, []*User{user}); err != nil {
+		return nil, err
+	}
+	return user, nil
 }
 
 func (r *PostgresRepository) UpdateUser(ctx context.Context, user *User) error {
@@ -156,11 +174,108 @@ func (r *PostgresRepository) ListUsers(ctx context.Context) ([]User, error) {
 		if email.Valid {
 			user.Email = email.String
 		}
-		user.Roles, _ = r.ListUserRoles(ctx, user.ID)
-		user.Permissions, _ = r.GetUserPermissions(ctx, user.ID)
 		users = append(users, user)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	userRefs := make([]*User, 0, len(users))
+	for i := range users {
+		userRefs = append(userRefs, &users[i])
+	}
+	if err := r.populateUsersAccess(ctx, userRefs); err != nil {
+		return nil, err
+	}
 	return users, nil
+}
+
+func (r *PostgresRepository) populateUsersAccess(ctx context.Context, users []*User) error {
+	if len(users) == 0 {
+		return nil
+	}
+
+	userIDs := make([]int64, 0, len(users))
+	userMap := make(map[int64]*User, len(users))
+	for _, user := range users {
+		if user == nil {
+			continue
+		}
+		userIDs = append(userIDs, user.ID)
+		userMap[user.ID] = user
+		if user.IsAdmin {
+			user.Permissions = []string{"*"}
+		}
+	}
+
+	roleRows, err := r.conn(ctx).Query(ctx, `
+		SELECT ur.user_id, r.id, r.name, r.description, r.permissions, r.created_at, r.updated_at
+		FROM user_roles ur
+		JOIN roles r ON r.id = ur.role_id
+		WHERE ur.user_id = ANY($1)
+		ORDER BY ur.user_id, r.name
+	`, userIDs)
+	if err != nil {
+		return err
+	}
+	defer roleRows.Close()
+
+	for roleRows.Next() {
+		var userID int64
+		var role Role
+		var permissionsJSON []byte
+		if err := roleRows.Scan(&userID, &role.ID, &role.Name, &role.Description, &permissionsJSON, &role.CreatedAt, &role.UpdatedAt); err != nil {
+			return err
+		}
+		_ = json.Unmarshal(permissionsJSON, &role.Permissions)
+		if user := userMap[userID]; user != nil {
+			user.Roles = append(user.Roles, role)
+		}
+	}
+	if err := roleRows.Err(); err != nil {
+		return err
+	}
+
+	permRows, err := r.conn(ctx).Query(ctx, `
+		SELECT DISTINCT ur.user_id, jsonb_array_elements_text(r.permissions) AS permission
+		FROM user_roles ur
+		JOIN roles r ON r.id = ur.role_id
+		WHERE ur.user_id = ANY($1)
+		ORDER BY ur.user_id
+	`, userIDs)
+	if err != nil {
+		return err
+	}
+	defer permRows.Close()
+
+	for permRows.Next() {
+		var userID int64
+		var permission string
+		if err := permRows.Scan(&userID, &permission); err != nil {
+			return err
+		}
+		user := userMap[userID]
+		if user == nil || user.IsAdmin {
+			continue
+		}
+		user.Permissions = append(user.Permissions, permission)
+	}
+	if err := permRows.Err(); err != nil {
+		return err
+	}
+
+	for _, user := range users {
+		if user == nil {
+			continue
+		}
+		profile, err := r.GetUserSubscriptionProfile(ctx, user.ID)
+		if err != nil {
+			return err
+		}
+		if profile != nil {
+			user.Subscription = *profile
+		}
+	}
+	return nil
 }
 
 func (r *PostgresRepository) GetUserPermissions(ctx context.Context, userID int64) ([]string, error) {
@@ -236,6 +351,285 @@ func (r *PostgresRepository) ListUserRoles(ctx context.Context, userID int64) ([
 	return roles, rows.Err()
 }
 
+// ==================== Subscription 操作 ====================
+
+func (r *PostgresRepository) CreateSubscriptionPlan(ctx context.Context, plan *SubscriptionPlan) error {
+	now := time.Now()
+	return r.conn(ctx).QueryRow(ctx, `
+		INSERT INTO subscription_plans (
+			name, code, description, storage_bytes, traffic_bytes, object_quota,
+			duration_days, price_cents, status, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		RETURNING id
+	`, plan.Name, plan.Code, plan.Description, plan.StorageBytes, plan.TrafficBytes, plan.ObjectQuota, plan.DurationDays, plan.PriceCents, plan.Status, now, now).Scan(&plan.ID)
+}
+
+func (r *PostgresRepository) UpdateSubscriptionPlan(ctx context.Context, plan *SubscriptionPlan) error {
+	_, err := r.conn(ctx).Exec(ctx, `
+		UPDATE subscription_plans
+		SET name = $1, code = $2, description = $3, storage_bytes = $4, traffic_bytes = $5,
+		    object_quota = $6, duration_days = $7, price_cents = $8, status = $9, updated_at = $10
+		WHERE id = $11
+	`, plan.Name, plan.Code, plan.Description, plan.StorageBytes, plan.TrafficBytes, plan.ObjectQuota, plan.DurationDays, plan.PriceCents, plan.Status, time.Now(), plan.ID)
+	return err
+}
+
+func (r *PostgresRepository) GetSubscriptionPlanByID(ctx context.Context, id int64) (*SubscriptionPlan, error) {
+	plan := &SubscriptionPlan{}
+	err := r.conn(ctx).QueryRow(ctx, `
+		SELECT id, name, code, description, storage_bytes, traffic_bytes, object_quota,
+		       duration_days, price_cents, status, created_at, updated_at
+		FROM subscription_plans
+		WHERE id = $1
+	`, id).Scan(
+		&plan.ID, &plan.Name, &plan.Code, &plan.Description, &plan.StorageBytes, &plan.TrafficBytes, &plan.ObjectQuota,
+		&plan.DurationDays, &plan.PriceCents, &plan.Status, &plan.CreatedAt, &plan.UpdatedAt,
+	)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return plan, nil
+}
+
+func (r *PostgresRepository) ListSubscriptionPlans(ctx context.Context, includeDisabled bool) ([]*SubscriptionPlan, error) {
+	query := `
+		SELECT id, name, code, description, storage_bytes, traffic_bytes, object_quota,
+		       duration_days, price_cents, status, created_at, updated_at
+		FROM subscription_plans
+	`
+	if !includeDisabled {
+		query += ` WHERE status = 'active'`
+	}
+	query += ` ORDER BY updated_at DESC, id DESC`
+
+	rows, err := r.conn(ctx).Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]*SubscriptionPlan, 0)
+	for rows.Next() {
+		item := &SubscriptionPlan{}
+		if err := rows.Scan(
+			&item.ID, &item.Name, &item.Code, &item.Description, &item.StorageBytes, &item.TrafficBytes, &item.ObjectQuota,
+			&item.DurationDays, &item.PriceCents, &item.Status, &item.CreatedAt, &item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *PostgresRepository) CreateResourcePackCode(ctx context.Context, code *ResourcePackCode) error {
+	now := time.Now()
+	var planID any
+	if code.PlanID > 0 {
+		planID = code.PlanID
+	}
+	return r.conn(ctx).QueryRow(ctx, `
+		INSERT INTO resource_pack_codes (
+			plan_id, code, label, storage_bytes, traffic_bytes, object_quota,
+			duration_days, status, redeemed_by_user_id, redeemed_at, expires_at, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		RETURNING id
+	`, planID, code.Code, code.Label, code.StorageBytes, code.TrafficBytes, code.ObjectQuota, code.DurationDays, code.Status, code.RedeemedByUserID, code.RedeemedAt, code.ExpiresAt, now, now).Scan(&code.ID)
+}
+
+func (r *PostgresRepository) GetResourcePackCodeByCode(ctx context.Context, rawCode string) (*ResourcePackCode, error) {
+	item := &ResourcePackCode{}
+	var planID sql.NullInt64
+	var redeemedByUserID sql.NullInt64
+	var redeemedAt sql.NullTime
+	var expiresAt sql.NullTime
+	err := r.conn(ctx).QueryRow(ctx, `
+		SELECT id, plan_id, code, label, storage_bytes, traffic_bytes, object_quota,
+		       duration_days, status, redeemed_by_user_id, redeemed_at, expires_at, created_at, updated_at
+		FROM resource_pack_codes
+		WHERE code = $1
+	`, rawCode).Scan(
+		&item.ID, &planID, &item.Code, &item.Label, &item.StorageBytes, &item.TrafficBytes, &item.ObjectQuota,
+		&item.DurationDays, &item.Status, &redeemedByUserID, &redeemedAt, &expiresAt, &item.CreatedAt, &item.UpdatedAt,
+	)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if planID.Valid {
+		item.PlanID = planID.Int64
+	}
+	if redeemedByUserID.Valid {
+		value := redeemedByUserID.Int64
+		item.RedeemedByUserID = &value
+	}
+	if redeemedAt.Valid {
+		value := redeemedAt.Time
+		item.RedeemedAt = &value
+	}
+	if expiresAt.Valid {
+		value := expiresAt.Time
+		item.ExpiresAt = &value
+	}
+	return item, nil
+}
+
+func (r *PostgresRepository) ListResourcePackCodes(ctx context.Context, limit int) ([]*ResourcePackCode, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := r.conn(ctx).Query(ctx, `
+		SELECT id, plan_id, code, label, storage_bytes, traffic_bytes, object_quota,
+		       duration_days, status, redeemed_by_user_id, redeemed_at, expires_at, created_at, updated_at
+		FROM resource_pack_codes
+		ORDER BY created_at DESC, id DESC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]*ResourcePackCode, 0)
+	for rows.Next() {
+		item := &ResourcePackCode{}
+		var planID sql.NullInt64
+		var redeemedByUserID sql.NullInt64
+		var redeemedAt sql.NullTime
+		var expiresAt sql.NullTime
+		if err := rows.Scan(
+			&item.ID, &planID, &item.Code, &item.Label, &item.StorageBytes, &item.TrafficBytes, &item.ObjectQuota,
+			&item.DurationDays, &item.Status, &redeemedByUserID, &redeemedAt, &expiresAt, &item.CreatedAt, &item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if planID.Valid {
+			item.PlanID = planID.Int64
+		}
+		if redeemedByUserID.Valid {
+			value := redeemedByUserID.Int64
+			item.RedeemedByUserID = &value
+		}
+		if redeemedAt.Valid {
+			value := redeemedAt.Time
+			item.RedeemedAt = &value
+		}
+		if expiresAt.Valid {
+			value := expiresAt.Time
+			item.ExpiresAt = &value
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *PostgresRepository) UpdateResourcePackCode(ctx context.Context, code *ResourcePackCode) error {
+	var planID any
+	if code.PlanID > 0 {
+		planID = code.PlanID
+	}
+	_, err := r.conn(ctx).Exec(ctx, `
+		UPDATE resource_pack_codes
+		SET plan_id = $1, label = $2, storage_bytes = $3, traffic_bytes = $4,
+		    object_quota = $5, duration_days = $6, status = $7, redeemed_by_user_id = $8,
+		    redeemed_at = $9, expires_at = $10, updated_at = $11
+		WHERE id = $12
+	`, planID, code.Label, code.StorageBytes, code.TrafficBytes, code.ObjectQuota, code.DurationDays, code.Status, code.RedeemedByUserID, code.RedeemedAt, code.ExpiresAt, time.Now(), code.ID)
+	return err
+}
+
+func (r *PostgresRepository) CreateUserSubscription(ctx context.Context, subscription *UserSubscription) error {
+	now := time.Now()
+	if subscription.StartedAt.IsZero() {
+		subscription.StartedAt = now
+	}
+	return r.conn(ctx).QueryRow(ctx, `
+		INSERT INTO user_subscriptions (
+			user_id, plan_id, resource_code_id, source, status, storage_bytes,
+			traffic_bytes, object_quota, started_at, expires_at, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		RETURNING id
+	`, subscription.UserID, subscription.PlanID, subscription.ResourceCodeID, subscription.Source, subscription.Status, subscription.StorageBytes, subscription.TrafficBytes, subscription.ObjectQuota, subscription.StartedAt, subscription.ExpiresAt, now, now).Scan(&subscription.ID)
+}
+
+func (r *PostgresRepository) ListUserSubscriptions(ctx context.Context, userID int64) ([]*UserSubscription, error) {
+	rows, err := r.conn(ctx).Query(ctx, `
+		SELECT id, user_id, plan_id, resource_code_id, source, status, storage_bytes,
+		       traffic_bytes, object_quota, started_at, expires_at, created_at, updated_at
+		FROM user_subscriptions
+		WHERE user_id = $1
+		ORDER BY created_at DESC, id DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]*UserSubscription, 0)
+	for rows.Next() {
+		item := &UserSubscription{}
+		var planID sql.NullInt64
+		var resourceCodeID sql.NullInt64
+		var expiresAt sql.NullTime
+		if err := rows.Scan(
+			&item.ID, &item.UserID, &planID, &resourceCodeID, &item.Source, &item.Status,
+			&item.StorageBytes, &item.TrafficBytes, &item.ObjectQuota, &item.StartedAt, &expiresAt, &item.CreatedAt, &item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if planID.Valid {
+			value := planID.Int64
+			item.PlanID = &value
+		}
+		if resourceCodeID.Valid {
+			value := resourceCodeID.Int64
+			item.ResourceCodeID = &value
+		}
+		if expiresAt.Valid {
+			value := expiresAt.Time
+			item.ExpiresAt = &value
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *PostgresRepository) GetUserSubscriptionProfile(ctx context.Context, userID int64) (*SubscriptionProfile, error) {
+	items, err := r.ListUserSubscriptions(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	profile := &SubscriptionProfile{
+		ActivePlans: make([]UserSubscription, 0),
+	}
+
+	for _, item := range items {
+		if item == nil || item.Status != "active" {
+			continue
+		}
+		if item.ExpiresAt != nil && item.ExpiresAt.Before(now) {
+			continue
+		}
+		profile.ActivePlans = append(profile.ActivePlans, *item)
+		profile.TotalStorageBytes += item.StorageBytes
+		profile.TotalTrafficBytes += item.TrafficBytes
+		profile.TotalObjectQuota += item.ObjectQuota
+		if item.ExpiresAt != nil && (profile.ExpiresAt == nil || item.ExpiresAt.After(*profile.ExpiresAt)) {
+			value := *item.ExpiresAt
+			profile.ExpiresAt = &value
+		}
+	}
+
+	return profile, nil
+}
+
 // ==================== Credential 操作 ====================
 
 func (r *PostgresRepository) CreateCredential(ctx context.Context, cred *Credential) error {
@@ -273,7 +667,8 @@ func (r *PostgresRepository) GetCredentialByID(ctx context.Context, id int64) (*
 
 func (r *PostgresRepository) GetCredentialByAccessKey(ctx context.Context, accessKey string) (*Credential, error) {
 	query := `SELECT id, user_id, access_key, secret_key, description, status, created_at, expires_at
-		FROM credentials WHERE access_key = $1 AND status = 'active'`
+		FROM credentials WHERE access_key = $1 AND status = 'active'
+		AND (expires_at IS NULL OR expires_at > NOW())`
 	cred := &Credential{}
 	var desc sql.NullString
 	var expiresAt sql.NullTime
@@ -333,6 +728,43 @@ func (r *PostgresRepository) UpdateCredential(ctx context.Context, cred *Credent
 
 func (r *PostgresRepository) DeleteCredential(ctx context.Context, id int64) error {
 	_, err := r.conn(ctx).Exec(ctx, `DELETE FROM credentials WHERE id = $1`, id)
+	return err
+}
+
+// ==================== Session 操作 ====================
+
+func (r *PostgresRepository) CreateSession(ctx context.Context, session *Session) error {
+	query := `
+		INSERT INTO sessions (token_hash, user_id, access_key, created_at, expires_at)
+		VALUES ($1, $2, $3, $4, $5)
+	`
+	_, err := r.conn(ctx).Exec(ctx, query, session.TokenHash, session.UserID, session.AccessKey, session.CreatedAt, session.ExpiresAt)
+	return err
+}
+
+func (r *PostgresRepository) GetSession(ctx context.Context, tokenHash string) (*Session, error) {
+	query := `
+		SELECT token_hash, user_id, access_key, created_at, expires_at
+		FROM sessions
+		WHERE token_hash = $1 AND expires_at > NOW()
+	`
+	session := &Session{}
+	err := r.conn(ctx).QueryRow(ctx, query, tokenHash).Scan(
+		&session.TokenHash, &session.UserID, &session.AccessKey, &session.CreatedAt, &session.ExpiresAt,
+	)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	return session, err
+}
+
+func (r *PostgresRepository) DeleteSession(ctx context.Context, tokenHash string) error {
+	_, err := r.conn(ctx).Exec(ctx, `DELETE FROM sessions WHERE token_hash = $1`, tokenHash)
+	return err
+}
+
+func (r *PostgresRepository) DeleteExpiredSessions(ctx context.Context) error {
+	_, err := r.conn(ctx).Exec(ctx, `DELETE FROM sessions WHERE expires_at <= NOW()`)
 	return err
 }
 
@@ -609,6 +1041,25 @@ func (r *PostgresRepository) DeleteObjectsByBucketID(ctx context.Context, bucket
 func (r *PostgresRepository) GetBucketStats(ctx context.Context, bucketID int64) (objectCount int64, totalSize int64, err error) {
 	query := `SELECT COUNT(*), COALESCE(SUM(size), 0) FROM objects WHERE bucket_id = $1 AND is_delete_marker = FALSE`
 	err = r.conn(ctx).QueryRow(ctx, query, bucketID).Scan(&objectCount, &totalSize)
+	return
+}
+
+func (r *PostgresRepository) GetUserResourceUsage(ctx context.Context, ownerID int64) (objectCount int64, totalSize int64, usedTraffic int64, err error) {
+	query := `
+		SELECT
+			COALESCE(SUM(stats.object_count), 0),
+			COALESCE(SUM(stats.total_size), 0),
+			COALESCE(SUM(b.used_traffic_bytes), 0)
+		FROM buckets b
+		LEFT JOIN (
+			SELECT bucket_id, COUNT(*) AS object_count, COALESCE(SUM(size), 0) AS total_size
+			FROM objects
+			WHERE is_delete_marker = FALSE
+			GROUP BY bucket_id
+		) stats ON stats.bucket_id = b.id
+		WHERE b.owner_id = $1
+	`
+	err = r.conn(ctx).QueryRow(ctx, query, ownerID).Scan(&objectCount, &totalSize, &usedTraffic)
 	return
 }
 

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -21,7 +22,31 @@ const (
 	PermTicketCreate     = "ticket:create"
 	PermTicketRead       = "ticket:read"
 	PermTicketManage     = "ticket:manage"
+	PermSubscriptionManage = "subscription:manage"
+	PermSubscriptionRead   = "subscription:read"
+	PermRedemptionManage   = "redemption:manage"
+	PermRedemptionUse      = "redemption:use"
 )
+
+var allowedPermissionSet = map[string]struct{}{
+	PermUserManage:       {},
+	PermCredentialManage: {},
+	PermRoleManage:       {},
+	PermBucketManage:     {},
+	PermBucketRead:       {},
+	PermBucketWrite:      {},
+	PermBucketAssign:     {},
+	PermBucketPolicy:     {},
+	PermBucketQuota:      {},
+	PermBucketTraffic:    {},
+	PermTicketCreate:     {},
+	PermTicketRead:       {},
+	PermTicketManage:     {},
+	PermSubscriptionManage: {},
+	PermSubscriptionRead:   {},
+	PermRedemptionManage:   {},
+	PermRedemptionUse:      {},
+}
 
 func hasPermission(c *gin.Context, permission string) bool {
 	if c.GetBool("is_admin") {
@@ -63,6 +88,19 @@ func (s *Server) requirePermission(permission string) gin.HandlerFunc {
 	}
 }
 
+func (s *Server) requireAnyPermission(permissions ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		for _, permission := range permissions {
+			if hasPermission(c, permission) {
+				c.Next()
+				return
+			}
+		}
+		c.JSON(403, gin.H{"error": "Permission denied", "required": permissions})
+		c.Abort()
+	}
+}
+
 func bucketAccessAllows(access *metadata.BucketAccess, write bool) bool {
 	if access == nil {
 		return false
@@ -71,10 +109,30 @@ func bucketAccessAllows(access *metadata.BucketAccess, write bool) bool {
 	case "admin":
 		return true
 	case "write":
-		return write || !write
+		return true
 	case "read":
 		return !write
 	default:
 		return false
 	}
+}
+
+func normalizePermissions(permissions []string) ([]string, error) {
+	normalized := make([]string, 0, len(permissions))
+	seen := make(map[string]struct{}, len(permissions))
+	for _, permission := range permissions {
+		permission = strings.TrimSpace(permission)
+		if permission == "" {
+			continue
+		}
+		if _, ok := allowedPermissionSet[permission]; !ok {
+			return nil, fmt.Errorf("invalid permission: %s", permission)
+		}
+		if _, ok := seen[permission]; ok {
+			continue
+		}
+		seen[permission] = struct{}{}
+		normalized = append(normalized, permission)
+	}
+	return normalized, nil
 }

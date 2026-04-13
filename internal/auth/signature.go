@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -141,6 +142,43 @@ func (s *SignatureV4) VerifyRequest(r *http.Request, secretKey string) error {
 	return s.verifyHeaderSignature(r, auth, secretKey)
 }
 
+func (s *SignatureV4) SignRequest(r *http.Request, payloadHash string) error {
+	if r == nil || r.URL == nil {
+		return fmt.Errorf("invalid request")
+	}
+	if payloadHash == "" {
+		payloadHash = "UNSIGNED-PAYLOAD"
+	}
+
+	now := time.Now().UTC()
+	dateTime := now.Format(TimeFormat)
+	date := now.Format(DateFormat)
+
+	if r.Host == "" {
+		r.Host = r.URL.Host
+	}
+	r.Header.Set("X-Amz-Date", dateTime)
+	r.Header.Set("X-Amz-Content-Sha256", payloadHash)
+
+	signedHeaders := []string{"host", "x-amz-content-sha256", "x-amz-date"}
+	canonicalRequest := s.buildCanonicalRequest(r, signedHeaders, payloadHash)
+	stringToSign := s.buildStringToSign(dateTime, date, s.region, canonicalRequest)
+	signature := s.calculateSignature(s.secretKey, date, s.region, stringToSign)
+
+	r.Header.Set("Authorization", fmt.Sprintf(
+		"%s Credential=%s/%s/%s/%s/%s, SignedHeaders=%s, Signature=%s",
+		SignatureV4Algorithm,
+		s.accessKey,
+		date,
+		s.region,
+		ServiceName,
+		TerminationString,
+		strings.Join(signedHeaders, ";"),
+		signature,
+	))
+	return nil
+}
+
 func (s *SignatureV4) verifyHeaderSignature(r *http.Request, auth *ParsedAuth, secretKey string) error {
 	// 获取请求时间
 	dateTime := r.Header.Get("X-Amz-Date")
@@ -188,8 +226,10 @@ func (s *SignatureV4) verifyQuerySignature(r *http.Request, auth *ParsedAuth, se
 	// 检查过期时间
 	expires := query.Get("X-Amz-Expires")
 	if expires != "" {
-		var expireSeconds int
-		fmt.Sscanf(expires, "%d", &expireSeconds)
+		expireSeconds, err := strconv.Atoi(expires)
+		if err != nil || expireSeconds < 0 {
+			return fmt.Errorf("invalid expires")
+		}
 		if time.Since(t) > time.Duration(expireSeconds)*time.Second {
 			return fmt.Errorf("request expired")
 		}
@@ -281,11 +321,21 @@ func (s *SignatureV4) buildCanonicalQueryString(query url.Values) string {
 
 	var pairs []string
 	for _, k := range keys {
-		for _, v := range query[k] {
-			pairs = append(pairs, url.QueryEscape(k)+"="+url.QueryEscape(v))
+		values := append([]string(nil), query[k]...)
+		sort.Strings(values)
+		for _, v := range values {
+			pairs = append(pairs, awsQueryEscape(k)+"="+awsQueryEscape(v))
 		}
 	}
 	return strings.Join(pairs, "&")
+}
+
+func awsQueryEscape(value string) string {
+	escaped := url.QueryEscape(value)
+	escaped = strings.ReplaceAll(escaped, "+", "%20")
+	escaped = strings.ReplaceAll(escaped, "*", "%2A")
+	escaped = strings.ReplaceAll(escaped, "%7E", "~")
+	return escaped
 }
 
 func (s *SignatureV4) buildCanonicalHeaders(r *http.Request, signedHeaders []string) string {
@@ -343,13 +393,23 @@ func (s *SignatureV4) GeneratePresignedURL(method, bucket, key string, expires t
 	query.Set("X-Amz-SignedHeaders", "host")
 
 	path := "/" + bucket + "/" + key
+	escapedPath := path
+	if escapedPath == "" {
+		escapedPath = "/"
+	}
+	parts := strings.Split(escapedPath, "/")
+	for i, part := range parts {
+		parts[i] = url.PathEscape(part)
+	}
+	escapedPath = strings.Join(parts, "/")
+	canonicalQuery := s.buildCanonicalQueryString(query)
 	canonicalRequest := fmt.Sprintf("%s\n%s\n%s\nhost:%s\n\nhost\nUNSIGNED-PAYLOAD",
-		method, path, query.Encode(), host)
+		method, escapedPath, canonicalQuery, host)
 
 	stringToSign := s.buildStringToSign(dateTime, date, s.region, canonicalRequest)
 	signature := s.calculateSignature(s.secretKey, date, s.region, stringToSign)
 
 	query.Set("X-Amz-Signature", signature)
 
-	return fmt.Sprintf("http://%s%s?%s", host, path, query.Encode())
+	return fmt.Sprintf("http://%s%s?%s", host, escapedPath, s.buildCanonicalQueryString(query))
 }

@@ -3,6 +3,8 @@
 COMPOSE ?= docker compose
 DEPLOY_DIR := deployments
 WEB_PORT ?= 3001
+DEV_COMPOSE := cd $(DEPLOY_DIR) && WEB_PORT=$(WEB_PORT) $(COMPOSE) --profile dev
+PROD_COMPOSE := cd $(DEPLOY_DIR) && $(COMPOSE) --profile production
 
 help:
 	@echo "1103-OSS 常用命令"
@@ -24,25 +26,26 @@ help:
 	@echo "  make status        查看容器状态"
 
 dev:
-	cd $(DEPLOY_DIR) && WEB_PORT=$(WEB_PORT) $(COMPOSE) --profile dev up -d
+	@$(DEV_COMPOSE) up -d
 
 dev-logs:
-	cd $(DEPLOY_DIR) && WEB_PORT=$(WEB_PORT) $(COMPOSE) --profile dev logs -f
+	@$(DEV_COMPOSE) logs -f
 
 dev-down:
-	cd $(DEPLOY_DIR) && WEB_PORT=$(WEB_PORT) $(COMPOSE) --profile dev down
+	@$(DEV_COMPOSE) down
 
 prod:
-	cd $(DEPLOY_DIR) && $(COMPOSE) --profile production up -d
+	@$(PROD_COMPOSE) up -d
 
 prod-logs:
-	cd $(DEPLOY_DIR) && $(COMPOSE) --profile production logs -f
+	@$(PROD_COMPOSE) logs -f
 
 prod-down:
-	cd $(DEPLOY_DIR) && $(COMPOSE) --profile production down
+	@$(PROD_COMPOSE) down
 
 build:
-	cd $(DEPLOY_DIR) && $(COMPOSE) build
+	@$(DEV_COMPOSE) build gooss-api-dev gooss-web-dev
+	@$(PROD_COMPOSE) build gooss-api gooss-web nginx
 
 clean:
 	cd $(DEPLOY_DIR) && $(COMPOSE) --profile dev --profile production down -v
@@ -51,28 +54,28 @@ restart:
 	cd $(DEPLOY_DIR) && $(COMPOSE) restart
 
 shell-api:
-	docker exec -it 1103-oss-api-dev sh
+	@$(DEV_COMPOSE) exec gooss-api-dev sh
 
 shell-db:
-	docker exec -it 1103-oss-postgres psql -U oss -d oss
+	@$(DEV_COMPOSE) exec postgres psql -U oss -d oss
 
 shell-web:
-	docker exec -it 1103-oss-web-dev sh
+	@$(DEV_COMPOSE) exec gooss-web-dev sh
 
 db-migrate:
-	docker exec -i 1103-oss-postgres psql -U oss -d oss < scripts/init.sql
+	@$(DEV_COMPOSE) exec -T postgres psql -U oss -d oss < scripts/init.sql
 
 db-reset:
-	cd $(DEPLOY_DIR) && $(COMPOSE) stop postgres
-	cd $(DEPLOY_DIR) && $(COMPOSE) rm -f postgres
-	docker volume rm deployments_postgres-data || true
-	cd $(DEPLOY_DIR) && $(COMPOSE) --profile dev up -d postgres
+	@$(DEV_COMPOSE) stop postgres
+	@$(DEV_COMPOSE) rm -f postgres
+	@docker volume rm deployments_postgres-data 2>/dev/null || docker volume rm oss_proj_postgres-data 2>/dev/null || true
+	@$(DEV_COMPOSE) up -d postgres
 
 status:
 	cd $(DEPLOY_DIR) && $(COMPOSE) ps
 
 credentials:
-	docker logs 1103-oss-api-dev 2>&1 | grep -A 2 "Access Key" || true
+	@$(DEV_COMPOSE) logs gooss-api-dev 2>&1 | grep -A 2 "Access Key" || true
 
 test:
 	go test ./...

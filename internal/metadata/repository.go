@@ -14,6 +14,7 @@ type User struct {
 	Email        string
 	Status       string
 	IsAdmin      bool
+	Subscription SubscriptionProfile
 	Roles        []Role
 	Permissions  []string
 	CreatedAt    time.Time
@@ -30,6 +31,14 @@ type Credential struct {
 	Status      string
 	CreatedAt   time.Time
 	ExpiresAt   *time.Time
+}
+
+type Session struct {
+	TokenHash string
+	UserID    int64
+	AccessKey string
+	CreatedAt time.Time
+	ExpiresAt time.Time
 }
 
 // Bucket 存储桶
@@ -55,6 +64,62 @@ type Role struct {
 	Permissions []string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+type SubscriptionPlan struct {
+	ID                int64
+	Name              string
+	Code              string
+	Description       string
+	StorageBytes      int64
+	TrafficBytes      int64
+	ObjectQuota       int64
+	DurationDays      int
+	PriceCents        int64
+	Status            string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+type ResourcePackCode struct {
+	ID                int64
+	PlanID            int64
+	Code              string
+	Label             string
+	StorageBytes      int64
+	TrafficBytes      int64
+	ObjectQuota       int64
+	DurationDays      int
+	Status            string
+	RedeemedByUserID  *int64
+	RedeemedAt        *time.Time
+	ExpiresAt         *time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+type UserSubscription struct {
+	ID                int64
+	UserID            int64
+	PlanID            *int64
+	ResourceCodeID    *int64
+	Source            string
+	Status            string
+	StorageBytes      int64
+	TrafficBytes      int64
+	ObjectQuota       int64
+	StartedAt         time.Time
+	ExpiresAt         *time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+type SubscriptionProfile struct {
+	ActivePlans       []UserSubscription
+	TotalStorageBytes int64
+	TotalTrafficBytes int64
+	TotalObjectQuota  int64
+	ExpiresAt         *time.Time
 }
 
 type BucketAccess struct {
@@ -184,6 +249,12 @@ type Repository interface {
 	UpdateCredential(ctx context.Context, cred *Credential) error
 	DeleteCredential(ctx context.Context, id int64) error
 
+	// Session 操作
+	CreateSession(ctx context.Context, session *Session) error
+	GetSession(ctx context.Context, tokenHash string) (*Session, error)
+	DeleteSession(ctx context.Context, tokenHash string) error
+	DeleteExpiredSessions(ctx context.Context) error
+
 	// Bucket 操作
 	CreateBucket(ctx context.Context, bucket *Bucket) error
 	GetBucketByName(ctx context.Context, name string) (*Bucket, error)
@@ -220,6 +291,12 @@ type Repository interface {
 	GetAuditLogStats(ctx context.Context, startTime, endTime time.Time) (map[string]interface{}, error)
 	GetRecentActions(ctx context.Context, limit int) ([]*AuditLog, error)
 
+	// Migration Jobs
+	CreateMigrationJob(ctx context.Context, job *MigrationJob) error
+	GetMigrationJob(ctx context.Context, id int64) (*MigrationJob, error)
+	ListMigrationJobs(ctx context.Context, userID *int64, limit int) ([]*MigrationJob, error)
+	UpdateMigrationJob(ctx context.Context, job *MigrationJob) error
+
 	// Tickets
 	CreateTicket(ctx context.Context, ticket *Ticket) error
 	GetTicketByID(ctx context.Context, id int64) (*Ticket, error)
@@ -227,6 +304,19 @@ type Repository interface {
 	UpdateTicket(ctx context.Context, ticket *Ticket) error
 	CreateTicketMessage(ctx context.Context, message *TicketMessage) error
 	ListTicketMessages(ctx context.Context, ticketID int64, includeInternal bool) ([]*TicketMessage, error)
+
+	// 订阅与兑换
+	CreateSubscriptionPlan(ctx context.Context, plan *SubscriptionPlan) error
+	UpdateSubscriptionPlan(ctx context.Context, plan *SubscriptionPlan) error
+	GetSubscriptionPlanByID(ctx context.Context, id int64) (*SubscriptionPlan, error)
+	ListSubscriptionPlans(ctx context.Context, includeDisabled bool) ([]*SubscriptionPlan, error)
+	CreateResourcePackCode(ctx context.Context, code *ResourcePackCode) error
+	GetResourcePackCodeByCode(ctx context.Context, code string) (*ResourcePackCode, error)
+	ListResourcePackCodes(ctx context.Context, limit int) ([]*ResourcePackCode, error)
+	UpdateResourcePackCode(ctx context.Context, code *ResourcePackCode) error
+	CreateUserSubscription(ctx context.Context, subscription *UserSubscription) error
+	ListUserSubscriptions(ctx context.Context, userID int64) ([]*UserSubscription, error)
+	GetUserSubscriptionProfile(ctx context.Context, userID int64) (*SubscriptionProfile, error)
 
 	// Object 操作
 	CreateObject(ctx context.Context, obj *Object) error
@@ -236,6 +326,7 @@ type Repository interface {
 	DeleteObject(ctx context.Context, bucketID int64, key string) error
 	DeleteObjectsByBucketID(ctx context.Context, bucketID int64) error
 	GetBucketStats(ctx context.Context, bucketID int64) (objectCount int64, totalSize int64, err error)
+	GetUserResourceUsage(ctx context.Context, ownerID int64) (objectCount int64, totalSize int64, usedTraffic int64, err error)
 
 	// MultipartUpload 操作
 	CreateMultipartUpload(ctx context.Context, upload *MultipartUpload) error

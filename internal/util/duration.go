@@ -22,6 +22,14 @@ func ParseDuration(s string) (time.Duration, error) {
 		return 0, fmt.Errorf("invalid duration format: %s", s)
 	}
 
+	matched := ""
+	for _, match := range matches {
+		matched += match[0]
+	}
+	if matched != s {
+		return 0, fmt.Errorf("invalid duration format: %s", s)
+	}
+
 	var totalDuration time.Duration
 
 	for _, match := range matches {
